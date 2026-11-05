@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+
+<html class="light" data-theme="light" lang="en">
+
+<head>
+
+  <meta charset="utf-8"/>
+
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+  <meta content="web_dashboard" name="shell-type"/>
+
+  <title>beRich Agency CRM (INR ₹)</title>
+
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+
+    <script>
+    (function() {
+      const savedTheme = localStorage.getItem('crm_theme_mode') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      } else {
+        document.documentElement.classList.add('light');
+        document.documentElement.classList.remove('dark');
+      }
+    })();
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="styles.css?v=20261103_v56" rel="stylesheet"/>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script id="tailwind-config">
+
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "background": "#F4F1FB",
+            "surface": "#FFFFFF",
+            "surface-muted": "#ECE7F8",
+            "primary": "#6A2FEA",
+            "primary-light": "#EFE9FD",
+            "emerald-accent": "#059669",
+            "amber-accent": "#D97706",
+            "sky-accent": "#0284C7",
+            "on-surface": "#1B1624",
+            "on-surface-variant": "#463E5C",
+            "outline": "#C4BBDD"
+          },
+
+          fontFamily: {
+
+            "headline-md": ["Plus Jakarta Sans"],
+
+            "body-lg": ["Plus Jakarta Sans"],
+
+            "label-code": ["JetBrains Mono"],
+
+            "body-md": ["Plus Jakarta Sans"],
+
+            "display-hero": ["Plus Jakarta Sans"],
+
+            "label-caps": ["Plus Jakarta Sans"],
+
+            "headline-lg": ["Plus Jakarta Sans"],
+
+            "body-sm": ["Plus Jakarta Sans"],
+
+            "headline-sm": ["Plus Jakarta Sans"]
+
+          }
+
+        }
+
+      }
+
+    }
+
+  </script>
+
+</head>
+
+<body class="font-body-md text-slate-800 bg-slate-50 selection:bg-indigo-100 selection:text-indigo-900 relative overflow-x-clip">
+  <!-- Ambient Soft Luminous Background Glows -->
+  <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+    <div class="absolute -top-40 right-1/4 w-[600px] h-[600px] rounded-full bg-amber-200/30 blur-[150px]"></div>
+    <div class="absolute top-1/4 -left-32 w-[550px] h-[550px] rounded-full bg-indigo-200/30 blur-[150px]"></div>
+    <div class="absolute -bottom-40 right-1/3 w-[600px] h-[600px] rounded-full bg-emerald-200/25 blur-[160px]"></div>
+  </div>
+
+    <div class="absolute top-1/3 -right-24 w-[460px] h-[460px] rounded-full bg-sky-400/[0.04] blur-[130px]"></div>
+
+    <div class="absolute -bottom-32 left-1/3 w-[500px] h-[500px] rounded-full bg-indigo-400/[0.035] blur-[140px]"></div>
+
+  </div>
+
+
+
+  <!-- LEFT NAVIGATION RAIL (3D Frosted Glass) -->
+
+  <aside class="fixed left-0 top-0 h-full w-72 glass-sidebar z-50 flex flex-col justify-between bg-white border-r border-slate-200 shadow-xs">
+
+    <div class="flex flex-col">
+
+      <!-- Editable Agency Branding Header -->
+
+      <div onclick="openApiSettingsModal()" title="Click to customize Agency Name, Subtitle, PayPal.me &amp; Up to 10 Partners" class="group cursor-pointer h-20 px-6 flex items-center justify-between hover:bg-white/[0.03] transition-colors border-b border-white/[0.05]">
+
+        <div class="flex items-center gap-3.5 min-w-0">
+
+          <div class="w-10 h-10 rounded-2xl btn-glass-mint flex items-center justify-center flex-shrink-0">
+
+            <span class="material-symbols-outlined text-[20px]">movie_edit</span>
+
+          </div>
+
+          <div class="flex flex-col min-w-0">
+
+            <div class="flex items-center gap-1.5 min-w-0">
+
+              <span id="sidebar-agency-name" data-brand-name class="font-headline-sm text-base text-slate-800 font-semibold tracking-tight leading-snug safe-text-wrap">beRich</span>
+              <span class="material-symbols-outlined text-[13px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">edit</span>
+            </div>
+            <span id="sidebar-agency-tagline" data-brand-tagline class="text-[10px] uppercase tracking-[0.14em] text-slate-400 mt-0.5 safe-text-wrap" style="display: none;"></span>
+
+          </div>
+
+        </div>
+
+        <span class="px-2.5 py-1 rounded-full btn-glass-mint font-label-code text-[11px] flex-shrink-0">INR ₹</span>
+
+      </div>
+
+
+
+      <div class="px-6 pt-5 pb-2">
+
+        <span class="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-semibold">Workspace Views</span>
+
+      </div>
+
+      <nav class="flex flex-col gap-1.5 px-4">
+
+        <a aria-current="page" class="flex items-center justify-between px-4 py-2.5 rounded-full transition bg-white/[0.06] border border-white/[0.08] text-slate-800 font-medium shadow-lg" href="index.html">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-emerald-300">view_kanban</span>
+
+            <span class="text-xs">Project Board</span>
+
+          </div>
+
+          <span class="w-2 h-2 rounded-full bg-emerald-300/80"></span>
+
+        </a>
+
+        <a class="flex items-center justify-between px-4 py-2.5 rounded-full text-slate-300 hover:bg-white/[0.04] hover:text-white transition" href="#" onclick="openUpiQrModal(); return false;">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-amber-200">qr_code_2</span>
+
+            <span class="text-xs">UPI &amp; PayPal Payment</span>
+
+          </div>
+
+          <span class="px-2.5 py-0.5 rounded-full btn-glass-amber font-label-code text-[10px]">QR • PayPal</span>
+
+        </a>
+
+        <a class="flex items-center justify-between px-4 py-2.5 rounded-full text-slate-300 hover:bg-white/[0.04] hover:text-white transition" href="#" onclick="openWhatsAppReportModal(); return false;">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-emerald-300">chat</span>
+
+            <span class="text-xs">WhatsApp Daily Report</span>
+
+          </div>
+
+          <span class="px-2.5 py-0.5 rounded-full btn-glass-mint font-label-code text-[10px]">wa.me</span>
+
+        </a>
+
+        <a class="flex items-center justify-between px-4 py-2.5 rounded-full text-slate-300 hover:bg-white/[0.04] hover:text-white transition" href="#" onclick="openCurrencyConverterModal(); return false;">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-sky-300">currency_exchange</span>
+
+            <span class="text-xs">Currency Converter</span>
+
+          </div>
+
+          <span class="px-2.5 py-0.5 rounded-full btn-glass-sky font-label-code text-[10px]">FX → ₹</span>
+
+        </a>
+
+        <a class="flex items-center justify-between px-4 py-2.5 rounded-full text-slate-300 hover:bg-white/[0.04] hover:text-white transition" href="#" onclick="openClientDossier(); return false;">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-violet-300">calculate</span>
+
+            <span class="text-xs">Profit Margin Engine</span>
+
+          </div>
+
+          <span class="px-2.5 py-0.5 rounded-full btn-glass-lavender font-label-code text-[10px]">Client File</span>
+
+        </a>
+
+        <a class="flex items-center justify-between px-4 py-2.5 rounded-full text-slate-300 hover:bg-white/[0.04] hover:text-white transition" href="tech-stack.html">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-sky-300">terminal</span>
+
+            <span class="text-xs">Software Subscriptions</span>
+
+          </div>
+
+          <span id="nav-tech-stack-burn" class="px-2.5 py-0.5 rounded-full btn-glass-neutral font-label-code text-[10px]">₹0/mo</span>
+
+        </a>
+
+        <a class="flex items-center justify-between px-4 py-2.5 rounded-full text-slate-300 hover:bg-white/[0.04] hover:text-white transition" href="receipt.html">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-emerald-300">receipt_long</span>
+
+            <span class="text-xs">Expense &amp; PDF Receipt</span>
+
+          </div>
+
+          <span class="font-label-code text-[10px] text-emerald-300">INR ₹</span>
+
+        </a>
+
+        <a class="flex items-center justify-between px-4 py-2.5 rounded-full text-slate-300 hover:bg-white/[0.04] hover:text-white transition" href="#" onclick="openEmailModal('', 'follow_up'); return false;">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-amber-200">all_inbox</span>
+
+            <span class="text-xs">Smart Gmail Outbox</span>
+
+          </div>
+
+          <span class="px-2.5 py-0.5 rounded-full btn-glass-amber font-label-code text-[10px]">MailApp</span>
+
+        </a>
+
+        <a class="flex items-center justify-between px-4 py-2.5 rounded-full text-slate-300 hover:bg-white/[0.04] hover:text-white transition" href="#" onclick="openActivityLedgerModal(); return false;">
+
+          <div class="flex items-center gap-3">
+
+            <span class="material-symbols-outlined text-[19px] text-emerald-300">history</span>
+
+            <span class="text-xs">Team History</span>
+
+          </div>
+
+          <span data-activity-log-count class="px-2.5 py-0.5 rounded-full btn-glass-mint font-label-code text-[10px]">0 Events</span>
+
+        </a>
+
+      </nav>
+
+    </div>
+
+
+
+    <div class="p-5 flex flex-col gap-3">
+
+      <div class="p-5 glass-panel flex flex-col gap-2">
+
+        <div class="flex items-center justify-between text-slate-400 text-[10px] uppercase tracking-[0.14em] font-semibold">
+
+          <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] text-emerald-300">groups</span> Name-Centric</span>
+
+          <span id="sidebar-active-partner-count" class="font-label-code text-[11px] text-emerald-300">3 Active</span>
+
+        </div>
+
+        <p class="text-[11px] text-slate-400 leading-relaxed safe-text-wrap">Up to 10 partners supported. Revenue is credited individually per assigned deal.</p>
+
+      </div>
+
+      <button type="button" onclick="openApiSettingsModal()" class="w-full flex items-center justify-between px-4 py-3 rounded-full btn-glass-neutral">
+
+        <div class="flex items-center gap-2.5">
+
+          <span class="material-symbols-outlined text-[18px] text-emerald-300">tune</span>
+
+          <span class="text-xs font-medium">Partners &amp; Sheet Config</span>
+
+        </div>
+
+        <span class="material-symbols-outlined text-[16px] text-slate-400">settings</span>
+
+      </button>
+
+    </div>
+
+  </aside>
+
+
+
+  <!-- MAIN CONTENT STAGE -->
+
+  <div class="pl-72 flex flex-col min-h-screen relative z-10">
+
+    <!-- TOP BAR (Hybrid Glassmorphism + Flexible Wrapping Header) -->
+
+    <header class="sticky top-0 w-full glass-header z-40 flex flex-col bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
+      <!-- Top Row: Branding, Global Search & Primary Actions -->
+      <div class="px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+        <!-- Left: Agency Branding Pill & Search -->
+        <div class="flex items-center gap-3.5 flex-1 min-w-[280px]">
+          <!-- Agency Branding Pill (Zero stray bullet) -->
+          <button type="button" onclick="openApiSettingsModal()" class="h-10 px-4 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 flex items-center gap-2 flex-shrink-0 transition shadow-xs" title="Edit Agency Name, Subtitle, PayPal.me &amp; Up to 10 Partners">
+            <span class="material-symbols-outlined text-[18px] text-emerald-600">badge</span>
+            <span id="header-agency-name" data-brand-name class="font-bold text-sm text-slate-900 tracking-tight">beRich</span>
+            <span id="header-agency-tagline" data-brand-tagline class="text-xs text-slate-500 font-medium hidden sm:inline" style="display: none;"></span>
+            <span class="material-symbols-outlined text-[14px] text-amber-500">edit</span>
+          </button>
+
+          <!-- Search Bar -->
+          <div class="header-search-wrapper relative flex-1 max-w-md">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <span class="material-symbols-outlined text-[18px]">search</span>
+            </div>
+            <input id="crm-global-search" class="w-full h-10 pl-10 pr-12 rounded-xl bg-slate-100 hover:bg-slate-100/80 focus:bg-white border border-slate-200 focus:border-indigo-500 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none transition shadow-inner" placeholder="Search deals, contacts, services..." type="text"/>
+            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+              <span class="px-1.5 py-0.5 bg-slate-200 rounded text-slate-500 font-mono text-[10px]">⌘K</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Active Partner Profile, WhatsApp CRM & Primary New Lead Button -->
+        <div class="header-actions-group flex items-center gap-2.5 flex-shrink-0">
+          <!-- Active Partner Presence Chip (#header-user-presence-btn) -->
+          <button id="header-user-presence-btn" type="button" onclick="openUserIdentityModal()" class="h-10 px-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 text-xs font-semibold flex items-center gap-2 transition shadow-xs" title="Active Studio User — Click to switch identity">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+            </span>
+            <span data-studio-user-name class="font-bold text-slate-900">koushik</span>
+            <span class="text-[10px] font-mono text-emerald-700 hidden sm:inline">ONLINE</span>
+          </button>
+
+          <!-- Dual-Theme Switcher Button (#btn-theme-toggle) -->
+          <button id="btn-theme-toggle" type="button" onclick="toggleThemeMode()" class="h-10 px-3.5 rounded-xl border flex items-center gap-1.5 transition text-xs font-bold shadow-xs cursor-pointer" title="Toggle Light / Dark Theme">
+            <span id="theme-toggle-icon" class="material-symbols-outlined text-[18px]">dark_mode</span>
+            <span id="theme-toggle-label" class="hidden sm:inline">Theme</span>
+          </button>
+
+          <!-- WhatsApp CRM Command Center Launch -->
+          <button type="button" onclick="openWhatsAppCommandModal()" class="btn-glass-whatsapp h-10 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition" title="Open Studio WhatsApp CRM">
+            <span class="material-symbols-outlined text-[17px] text-emerald-700">chat</span>
+            <span class="text-emerald-900 font-bold">WhatsApp CRM</span>
+          </button>
+
+          <!-- Primary CTA: + New Lead (₹) (#btn-open-new-lead) -->
+          <button id="btn-open-new-lead" type="button" onclick="openNewLeadModal()" class="h-10 px-4.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm hover:shadow transition">
+            <span class="material-symbols-outlined text-[18px]">add</span>
+            <span>+ New Lead (₹)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sub-Toolbar: Secondary Tools (Clean, never-overlapping responsive shelf) -->
+      <div class="sub-toolbar-shelf px-6 py-2 flex flex-wrap items-center justify-between gap-3 text-xs overflow-x-auto">
+        <div class="flex items-center gap-2 flex-wrap">
+          <!-- Sync Sheet -->
+          <button type="button" onclick="fetchFromGoogleSheets(true)" class="sub-toolbar-btn h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium transition shadow-xs" title="Sync from Google Sheets">
+            <span class="material-symbols-outlined text-[15px] text-teal-600">refresh</span>
+            <span>Sync Sheet</span>
+          </button>
+
+          <!-- UPI & PayPal Payment Card -->
+          <button type="button" onclick="openUpiQrModal()" class="sub-toolbar-btn h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium transition shadow-xs" title="Client Payment (UPI & PayPal)">
+            <span class="material-symbols-outlined text-[15px] text-amber-600">qr_code_2</span>
+            <span>UPI &amp; PayPal (₹)</span>
+          </button>
+
+          <!-- Bulk FX Converter -->
+          <button type="button" onclick="openCurrencyConverterModal()" class="sub-toolbar-btn h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium transition shadow-xs" title="FX to INR Converter">
+            <span class="material-symbols-outlined text-[15px] text-sky-600">currency_exchange</span>
+            <span>FX → ₹</span>
+          </button>
+
+          <!-- Team History Ledger -->
+          <button type="button" onclick="openActivityLedgerModal()" class="sub-toolbar-btn h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium transition shadow-xs" title="Open Team History Ledger">
+            <span class="material-symbols-outlined text-[15px] text-purple-600">history</span>
+            <span>History</span>
+            <span data-activity-log-count class="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 font-mono text-[10px] font-bold">1</span>
+          </button>
+
+          <!-- Quick Start Guide -->
+          <button type="button" onclick="openQuickStartModal()" id="btn-quick-start" class="btn-quick-start h-8 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs" title="Studio Operations Guide">
+            <span class="material-symbols-outlined text-[15px] text-amber-700">menu_book</span>
+            <span>Quick Start Guide</span>
+          </button>
+
+          <!-- GitHub Database Sync Badge -->
+          <div id="sheets-sync-status-badge" onclick="openApiSettingsModal()" class="cursor-pointer"></div>
+        </div>
+
+        <!-- Telemetry SLA Status Pill & Key Numbers -->
+        <div class="flex items-center gap-3 flex-wrap">
+          <div id="telemetry-sla-pill" onclick="openWhatsAppCommandModal()" class="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-[11px] flex items-center gap-1.5 cursor-pointer font-semibold shadow-xs" title="Client Response SLA Status">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span>SLA: All Clear (0 Overdue)</span>
+          </div>
+          <div class="flex items-center gap-3 text-slate-600 text-xs font-medium hidden lg:flex">
+            <span>Closed: <strong id="metric-ytd-header" class="text-slate-900">₹0 Closed</strong></span>
+            <span class="text-slate-300">•</span>
+            <span>Cash: <strong id="metric-cash-header" class="text-emerald-700 font-bold">₹0 Collected</strong></span>
+            <span class="text-slate-300">•</span>
+            <span id="metric-mtd-header" class="hidden">₹0 Total</span>
+            <span>Active: <strong id="metric-unpaid-header" class="text-amber-700">₹0</strong> <span id="metric-unpaid-count-header" class="text-slate-400 font-normal">(0 Deals)</span></span>
+          </div>
+          <!-- Active Partner Revenue Telemetry rendered by app.js -->
+          <div id="subheader-partner-metrics" class="flex items-center gap-3 py-0.5"></div>
+        </div>
+      </div>
+    </header>
+
+
+
+    <!-- WORKSPACE BODY -->
+
+    <main class="w-full pt-7 px-7 pb-14 flex-1">
+
+      <div class="flex flex-col w-full gap-7">
+
+        <!-- 1. BRIGHT EXECUTIVE BENTO METRICS & INTERACTIVE VISUAL WIDGETS -->
+        <section class="w-full flex flex-col gap-6">
+
+          <!-- Row A: 3 High-Impact Modern Bento Metric Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full">
+
+            <!-- Card 1: Actual Liquid Cash Collected -->
+            <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[20px]">account_balance_wallet</span>
+                  </div>
+                  <div>
+                    <span class="text-[10px] uppercase font-mono font-bold tracking-wider text-emerald-700">Liquid Cash Flow</span>
+                    <h4 class="text-xs font-bold text-slate-700">Actual Cash Collected</h4>
+                  </div>
+                </div>
+                <span id="metric-hero-cash-count" class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-mono text-[10px] font-bold border border-emerald-200">0 Payments</span>
+              </div>
+              <div class="my-4">
+                <span id="metric-hero-cash" class="text-4xl font-extrabold text-slate-900 tracking-tight">₹0</span>
+              </div>
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <span class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span>Received in bank &amp; UPI</span>
+                </span>
+                <span class="font-medium text-emerald-700">Real Money</span>
+              </div>
+            </div>
+
+            <!-- Card 2: Total Closed Pipeline (Theoretical Won Value) -->
+            <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[20px]">emoji_events</span>
+                  </div>
+                  <div>
+                    <span class="text-[10px] uppercase font-mono font-bold tracking-wider text-indigo-700">Closed Value</span>
+                    <h4 class="text-xs font-bold text-slate-700">Total Closed Revenue</h4>
+                  </div>
+                </div>
+                <button type="button" onclick="openApiSettingsModal()" class="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 hover:text-slate-900 font-mono text-[10px] flex items-center gap-1">
+                  <span class="material-symbols-outlined text-[12px] text-indigo-600">edit</span>
+                </button>
+              </div>
+              <div class="my-4 flex items-baseline gap-2.5">
+                <span id="metric-hero-ytd" class="text-4xl font-extrabold text-slate-900 tracking-tight">₹0</span>
+                <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-mono text-[10px] font-bold border border-indigo-200">Won Deals</span>
+              </div>
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <span class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                  <span>Contracted value of deals</span>
+                </span>
+                <span class="font-medium text-indigo-700">Contracted</span>
+              </div>
+            </div>
+
+            <!-- Card 3: Active Production Pipeline -->
+            <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[20px]">videocam</span>
+                  </div>
+                  <div>
+                    <span class="text-[10px] uppercase font-mono font-bold tracking-wider text-amber-700">Active Queue</span>
+                    <h4 class="text-xs font-bold text-slate-700">Active Project Value</h4>
+                  </div>
+                </div>
+                <span id="metric-hero-unpaid-count" class="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-mono text-[10px] font-bold border border-amber-200">0 Deals</span>
+              </div>
+              <div class="my-4">
+                <span id="metric-hero-unpaid" class="text-4xl font-extrabold text-amber-600 tracking-tight">₹0</span>
+              </div>
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <span id="metric-hero-sample-count" class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span>0 in sample prep &amp; review</span>
+                </span>
+                <span class="font-medium text-amber-700">In Edit</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Row B: 3 INTERACTIVE VISUAL WIDGETS (Direct from Reference Images 4 & 5!) -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 w-full">
+
+            <!-- Widget 1: Goals Semi-Circle Radial Speedometer Gauge (4 Cols) -->
+            <div class="lg:col-span-4 p-6 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-[18px] text-amber-500">speed</span>
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800">Studio Cash Goal</h3>
+                </div>
+                <span id="visual-goal-pct-badge" class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-mono text-[10px] font-bold border border-amber-200">0% Target</span>
+              </div>
+
+              <!-- SVG Semi-Circle Speedometer Gauge -->
+              <div class="relative flex flex-col items-center justify-center my-3">
+                <svg aria-hidden="true" viewBox="0 0 200 115" class="w-48 h-28 overflow-visible">
+                  <!-- Background Track -->
+                  <path id="visual-speedometer-track" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#E2E8F0" stroke-width="14" stroke-linecap="round"/>
+                  <!-- Dash Ticks Pattern -->
+                  <path id="visual-speedometer-ticks" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#CBD5E1" stroke-width="14" stroke-dasharray="2 12" stroke-linecap="round"/>
+                  <!-- Dynamic Progress Arc (Filled via JS) -->
+                  <path id="visual-speedometer-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#speedometerGradientLight)" stroke-width="14" stroke-dasharray="251" stroke-dashoffset="246" stroke-linecap="round" class="transition duration-700 ease-out"/>
+                  <defs>
+                    <linearGradient id="speedometerGradientLight" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stop-color="#F97316"/>
+                      <stop offset="50%" stop-color="#6366F1"/>
+                      <stop offset="100%" stop-color="#4F46E5"/>
+                    </linearGradient>
+                    <linearGradient id="speedometerGradientDark" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stop-color="#FACC15"/>
+                      <stop offset="50%" stop-color="#22D3EE"/>
+                      <stop offset="100%" stop-color="#10B981"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div class="absolute bottom-2 flex flex-col items-center text-center">
+                  <span id="visual-speedometer-val" class="text-2xl font-extrabold text-slate-900 tracking-tight">₹0</span>
+                  <span id="visual-speedometer-target" class="text-[10px] text-slate-500 font-medium">Out of ₹50,000 Target</span>
+                </div>
+              </div>
+
+              <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <span>0%</span>
+                <span class="text-slate-400">50%</span>
+                <span>100% Target</span>
+              </div>
+            </div>
+
+            <!-- Widget 2: Pipeline Stage Donut / Pie Chart (4 Cols) -->
+            <div class="lg:col-span-4 p-6 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-[18px] text-indigo-500">pie_chart</span>
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800">Pipeline Stages</h3>
+                </div>
+                <span id="visual-donut-total-badge" class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-mono text-[10px] font-bold border border-indigo-200">0 Active Deals</span>
+              </div>
+
+              <!-- SVG Donut Chart -->
+              <div class="relative flex items-center justify-center my-2">
+                <svg aria-hidden="true" viewBox="0 0 160 160" class="w-36 h-36 transform -rotate-90">
+                  <circle id="visual-donut-bg-circle" cx="80" cy="80" r="58" fill="none" stroke="#F1F5F9" stroke-width="20"/>
+                  <!-- Slices dynamically rendered by renderHeaderAndMetrics() in app.js -->
+                  <circle id="donut-slice-identified" cx="80" cy="80" r="58" fill="none" stroke="#94A3B8" stroke-width="20" stroke-dasharray="0 365" class="transition duration-500"/>
+                  <circle id="donut-slice-discussion" cx="80" cy="80" r="58" fill="none" stroke="#38BDF8" stroke-width="20" stroke-dasharray="0 365" class="transition duration-500"/>
+                  <circle id="donut-slice-sample" cx="80" cy="80" r="58" fill="none" stroke="#A855F7" stroke-width="20" stroke-dasharray="0 365" class="transition duration-500"/>
+                  <circle id="donut-slice-won" cx="80" cy="80" r="58" fill="none" stroke="#10B981" stroke-width="20" stroke-dasharray="0 365" class="transition duration-500"/>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                  <span id="visual-donut-center-count" class="text-2xl font-extrabold text-slate-900 tracking-tight">0</span>
+                  <span class="text-[9px] uppercase font-mono text-slate-400 font-bold">Total Deals</span>
+                </div>
+              </div>
+
+              <!-- Interactive Legend -->
+              <div class="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-100 text-[10px] font-medium text-slate-600">
+                <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-400 flex-shrink-0"></span><span>Identified (<strong id="donut-count-identified" class="text-slate-800">0</strong>)</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-sky-400 flex-shrink-0"></span><span>Discussion (<strong id="donut-count-discussion" class="text-slate-800">0</strong>)</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-purple-500 flex-shrink-0"></span><span>Sample Cut (<strong id="donut-count-sample" class="text-slate-800">0</strong>)</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"></span><span>Won (<strong id="donut-count-won" class="text-slate-800">0</strong>)</span></div>
+              </div>
+            </div>
+
+            <!-- Widget 3: Monthly Deal Activity & Touchpoint Heatmap Matrix (4 Cols) -->
+            <div class="lg:col-span-4 p-6 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-[18px] text-emerald-600">calendar_month</span>
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800">Activity Heatmap</h3>
+                </div>
+                <span id="heatmap-year-label" class="text-xs text-slate-500 font-semibold">2026</span>
+              </div>
+
+              <!-- Dot Matrix Grid (Jan to Dec) -->
+              <div class="flex flex-col gap-2.5 my-2">
+                <div class="flex items-center justify-between text-[9px] font-mono font-bold text-slate-400 px-1">
+                  <span>JAN</span><span>FEB</span><span>MAR</span><span>APR</span><span>MAY</span><span>JUN</span>
+                  <span>JUL</span><span>AUG</span><span>SEP</span><span>OCT</span><span>NOV</span><span>DEC</span>
+                </div>
+
+                <!-- Row 1: New Leads (Warm Orange) -->
+                <div class="flex items-center gap-2">
+                  <span class="w-14 text-[9px] font-mono text-slate-500 font-semibold">Leads</span>
+                  <div id="heatmap-row-leads" class="flex items-center justify-between flex-1"></div>
+                </div>
+
+                <!-- Row 2: Video Cuts in Progress (Indigo) -->
+                <div class="flex items-center gap-2">
+                  <span class="w-14 text-[9px] font-mono text-slate-500 font-semibold">Cuts</span>
+                  <div id="heatmap-row-cuts" class="flex items-center justify-between flex-1"></div>
+                </div>
+
+                <!-- Row 3: Payments Received (Emerald) -->
+                <div class="flex items-center gap-2">
+                  <span class="w-14 text-[9px] font-mono text-slate-500 font-semibold">Cash</span>
+                  <div id="heatmap-row-cash" class="flex items-center justify-between flex-1"></div>
+                </div>
+              </div>
+
+              <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Live touchpoint telemetry</span></span>
+                <span class="text-slate-400 font-mono text-[10px]">Auto-Synced</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Row C: 3-Partner Executive Performance Showcase (Luminous & Distinct BY DEFAULT) -->
+          <div class="w-full p-6 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col gap-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <span class="material-symbols-outlined text-[18px]">group</span>
+                </div>
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900 tracking-tight">Partner Command &amp; Revenue Share</h3>
+                  <span class="text-xs text-slate-500">Individual deal value credited strictly by assigned partner</span>
+                </div>
+              </div>
+              <button type="button" onclick="openApiSettingsModal()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition shadow-xs">
+                <span class="material-symbols-outlined text-[14px] text-indigo-600">tune</span>
+                <span>Configure Partners (Up to 10)</span>
+              </button>
+            </div>
+
+            <!-- Dynamic Partner Showcase Cards populated by app.js -->
+            <div id="hero-partner-performance-grid" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
+          </div>
+
+        </section>
+
+
+
+        <!-- 2. FILTER & OPERATION CONTROL HUB (3D Glass Card, 24px padding) -->
+
+        <section class="flex flex-col gap-5 glass-card p-6">
+
+          <div class="flex flex-wrap items-center justify-between gap-4">
+
+            <!-- Dynamic Partner Focus Pills rendered by app.js (shows only active partners) -->
+
+            <div id="partner-filter-pills-container" class="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl bg-black/20 border border-white/[0.04] max-w-full"></div>
+
+
+
+            <!-- Action Group (Translucent Pastel Glass Buttons) -->
+
+            <div class="flex flex-wrap items-center gap-2.5">
+
+              <button type="button" onclick="resetAllKanbanColumnWidths()" class="h-10 px-4 rounded-full btn-glass-neutral text-xs font-medium flex items-center gap-1.5" title="Reset all board column widths to default">
+
+                <span class="material-symbols-outlined text-[16px] text-sky-300">view_column</span>
+
+                <span>Reset Widths</span>
+
+              </button>
+
+              <button type="button" onclick="openUpiQrModal()" class="h-10 px-4 rounded-full btn-glass-amber text-xs flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[17px]">qr_code_2</span>
+
+                <span>UPI &amp; PayPal QR</span>
+
+              </button>
+
+              <button type="button" onclick="openCurrencyConverterModal()" class="h-10 px-4 rounded-full btn-glass-sky text-xs flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[17px]">currency_exchange</span>
+
+                <span>Bulk FX → ₹</span>
+
+              </button>
+
+              <button type="button" onclick="toggleValueSort()" class="h-10 px-4 rounded-full btn-glass-neutral text-xs font-medium flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[17px] text-slate-400">tune</span>
+
+                <span id="sort-direction-label">Sort: Value (High-Low)</span>
+
+              </button>
+
+                        <!-- Layman Quick Start Guide Button -->
+          <button type="button" onclick="openQuickStartModal()" id="btn-quick-start" class="btn-quick-start h-10 px-4 rounded-full text-xs font-bold flex items-center gap-1.5 flex-shrink-0" title="How to Use Studio CRM">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">menu_book</span>
+            <span class="hidden sm:inline">Quick Start Guide</span>
+            <span class="sm:hidden">Guide</span>
+          </button>
+          <button type="button" onclick="openNewLeadModal()" class="h-10 px-5 rounded-full btn-glass-mint text-xs flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[18px]">add_circle</span>
+
+                <span>+ New Client Lead</span>
+
+              </button>
+
+            </div>
+
+          </div>
+
+
+
+          <!-- Sub-Filters: Channels & Sample Filter -->
+
+          <div class="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-white/[0.04]">
+
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+
+              <span class="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-semibold mr-1">Source:</span>
+
+              <button type="button" onclick="setSourceFilter('ALL', this)" class="px-3.5 py-1.5 rounded-full btn-glass-mint text-xs">All Sources</button>
+
+              <button type="button" onclick="setSourceFilter('Cold Email', this)" class="px-3.5 py-1.5 rounded-full btn-glass-neutral text-xs flex items-center gap-1.5">
+
+                <span class="w-1.5 h-1.5 rounded-full bg-indigo-300"></span> Cold Email
+
+              </button>
+
+              <button type="button" onclick="setSourceFilter('LinkedIn DM', this)" class="px-3.5 py-1.5 rounded-full btn-glass-neutral text-xs flex items-center gap-1.5">
+
+                <span class="w-1.5 h-1.5 rounded-full bg-sky-300"></span> LinkedIn DM
+
+              </button>
+
+              <button type="button" onclick="setSourceFilter('Upwork Enterprise', this)" class="px-3.5 py-1.5 rounded-full btn-glass-neutral text-xs flex items-center gap-1.5">
+
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-300"></span> Upwork Enterprise
+
+              </button>
+
+              <button type="button" onclick="setSourceFilter('Instagram DM', this)" class="px-3.5 py-1.5 rounded-full btn-glass-neutral text-xs flex items-center gap-1.5">
+
+                <span class="w-1.5 h-1.5 rounded-full bg-pink-300"></span> Instagram DM
+
+              </button>
+
+              <button type="button" onclick="setSourceFilter('X/Twitter', this)" class="px-3.5 py-1.5 rounded-full btn-glass-neutral text-xs flex items-center gap-1.5">
+
+                <span class="w-1.5 h-1.5 rounded-full bg-cyan-300"></span> X/Twitter Inbound
+
+              </button>
+
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+
+              <span class="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-semibold mr-1">Sample:</span>
+
+              <button type="button" onclick="setSampleFilter('ALL')" class="px-3 py-1 rounded-full btn-glass-neutral text-xs font-label-code">All</button>
+
+              <button type="button" onclick="setSampleFilter('PREP')" class="px-3 py-1 rounded-full btn-glass-amber text-xs font-label-code">In Prep</button>
+
+              <button type="button" onclick="setSampleFilter('DELIVERED')" class="px-3 py-1 rounded-full btn-glass-mint text-xs font-label-code">Delivered</button>
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+
+        <!-- 3. FULL-WIDTH DRAGGABLE 5-COLUMN KANBAN BOARD (PROJECT BOARD CENTERPIECE) -->
+        <div id="project-board-section" class="w-full flex flex-col gap-3 min-w-0">
+          <div class="flex flex-wrap items-center justify-between gap-2 px-2 text-xs text-slate-400 font-label-code">
+            <span class="flex items-center gap-2 safe-text-wrap">
+              <span class="material-symbols-outlined text-[15px] text-emerald-400">drag_indicator</span>
+              <span>Drag right edge of any board column (<strong class="text-slate-200">180px to 500px</strong>) to resize. Saved automatically.</span>
+            </span>
+            <div class="flex items-center gap-3">
+              <button type="button" onclick="loadDemoStudioDeals()" class="text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20" title="Click to populate 4 realistic sample video projects to test the Kanban board">
+                <span class="material-symbols-outlined text-[14px]">auto_fix</span>
+                <span>+ Load Demo Deals</span>
+              </button>
+              <button type="button" onclick="resetAllKanbanColumnWidths()" class="text-emerald-400 hover:underline">Reset Column Widths</button>
+            </div>
+          </div>
+          <div class="kanban-scroll-wrapper">
+            <div id="kanban-board-columns" class="kanban-board-flex"></div>
+          </div>
+        </div>
+
+        <!-- 4. TECH STACK & PRODUCTION SUBSCRIPTIONS STRIP (3D Glass Card, 24px padding) -->
+
+        <section class="flex flex-col gap-5 glass-card p-6">
+
+          <div class="flex flex-wrap items-center justify-between gap-4">
+
+            <div class="flex items-center gap-3.5 min-w-0">
+
+              <div class="w-11 h-11 rounded-2xl btn-glass-sky flex items-center justify-center flex-shrink-0">
+
+                <span class="material-symbols-outlined text-[20px]">build_circle</span>
+
+              </div>
+
+              <div class="min-w-0">
+
+                <div class="flex flex-wrap items-center gap-2.5">
+
+                  <h3 class="font-headline-sm text-base text-slate-800 font-semibold safe-text-wrap">Software Subscriptions &amp; Production Tools (INR ₹)</h3>
+
+                  <span id="tech-stack-active-count" class="px-3 py-0.5 rounded-full btn-glass-sky font-label-code text-[11px]">0 Active Tools</span>
+
+                </div>
+
+                <p class="text-xs text-slate-400 mt-1 safe-text-wrap">Direct monthly tool burn in ₹ allocated into deal profit margins (Synced with 'Tech Stack' Sheet)</p>
+
+              </div>
+
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+
+              <div class="flex items-baseline gap-2 px-4 py-2 rounded-full bg-black/25 border border-white/[0.05]">
+
+                <span class="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-semibold">Monthly Burn:</span>
+
+                <span id="tech-stack-total-burn" class="font-label-code text-sm text-amber-200 font-semibold">₹0/mo</span>
+
+                <span id="tech-stack-yearly-burn" class="font-label-code text-[11px] text-slate-400">(₹0/yr)</span>
+
+              </div>
+
+              <a href="tech-stack.html" class="h-10 px-5 rounded-full btn-glass-neutral text-xs font-medium flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[16px] text-emerald-300">add</span>
+
+                <span>Manage Subscriptions (₹)</span>
+
+              </a>
+
+            </div>
+
+          </div>
+
+          <div id="tech-stack-mini-grid" class="tech-stack-cards-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+
+        </section>
+
+        <!-- 5. STUDIO ACTIVITY LEDGER — REAL-TIME AUDIT TIMELINE (GitHub JSON Synced) -->
+
+        <section id="studio-activity-ledger-section" class="w-full glass-card p-6 flex flex-col gap-4 relative overflow-hidden">
+
+          <div class="flex flex-wrap items-center justify-between gap-4">
+
+            <div class="flex items-center gap-3.5 min-w-0">
+
+              <div class="w-11 h-11 rounded-2xl btn-glass-mint flex items-center justify-center flex-shrink-0">
+
+                <span class="material-symbols-outlined text-[20px]">history</span>
+
+              </div>
+
+              <div class="min-w-0">
+
+                <div class="flex flex-wrap items-center gap-2.5">
+
+                  <h3 class="font-headline-sm text-base text-slate-800 font-semibold safe-text-wrap">Team History: Live Audit History</h3>
+
+                  <span data-activity-log-count class="px-3 py-0.5 rounded-full btn-glass-mint font-label-code text-[11px]">0 Events</span>
+
+                  <span class="px-2.5 py-0.5 rounded-full bg-white/[0.05] text-slate-300 font-label-code text-[10px]">GitHub Versioned JSON</span>
+
+                </div>
+
+                <p class="text-xs text-slate-400 mt-1 safe-text-wrap">Real-time ledger tracking who added, moved, or updated deals &amp; subscriptions, from which device, and when.</p>
+
+              </div>
+
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+
+              <button type="button" onclick="openUserIdentityModal()" class="h-9 px-3.5 rounded-full btn-glass-neutral text-xs flex items-center gap-1.5">
+
+                <span class="relative flex h-2 w-2">
+
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34D399] opacity-75"></span>
+
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-[#34D399]"></span>
+
+                </span>
+
+                <span>Posting as: <strong data-studio-user-name class="text-white">Guest</strong></span>
+
+              </button>
+
+              <button type="button" onclick="exportActivityLedger('csv')" class="h-9 px-3.5 rounded-full btn-glass-sky text-xs flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[15px]">download</span>
+
+                <span>Export CSV</span>
+
+              </button>
+
+              <button type="button" onclick="exportActivityLedger('json')" class="h-9 px-3.5 rounded-full btn-glass-neutral text-xs flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[15px]">data_object</span>
+
+                <span>Export JSON</span>
+
+              </button>
+
+              <button type="button" onclick="clearActivityLedger()" class="h-9 px-3.5 rounded-full btn-glass-amber text-xs flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[15px]">delete_sweep</span>
+
+                <span>Clear</span>
+
+              </button>
+
+              <button type="button" onclick="openActivityLedgerModal()" class="h-9 px-3.5 rounded-full btn-glass-lavender text-xs flex items-center gap-1.5">
+
+                <span class="material-symbols-outlined text-[15px]">open_in_full</span>
+
+                <span>Full Ledger</span>
+
+              </button>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/[0.05]">
+
+            <div data-activity-user-filters class="flex flex-wrap items-center gap-1.5"></div>
+
+            <button type="button" onclick="openApiSettingsModal()" class="text-[11px] font-label-code text-[#34D399] hover:underline flex items-center gap-1">
+
+              <span class="material-symbols-outlined text-[14px]">cloud_sync</span>
+
+              <span>Configure Database Security Key &amp; Location</span>
+
+            </button>
+
+          </div>
+
+
+
+          <div data-activity-ledger-feed class="activity-ledger-scroll max-h-72 overflow-y-auto flex flex-col gap-2 pr-1"></div>
+
+        </section>
+
+
+
+        <!-- 6. STUDIO QUICK ACTIONS (FULL-WIDTH BOTTOM GRID BELOW KANBAN BOARD) -->
+
+        <section class="w-full glass-card p-6 flex flex-col gap-4 relative overflow-hidden">
+
+          <div class="flex items-center justify-between gap-3">
+
+            <div class="flex items-center gap-3 min-w-0">
+
+              <div class="lotech-icon-box text-emerald-400">
+
+                <span class="material-symbols-outlined text-[20px]">bolt</span>
+
+              </div>
+
+              <div class="min-w-0">
+
+                <h3 class="font-headline-sm text-base text-slate-800 font-semibold safe-text-wrap">Studio Quick Actions</h3>
+
+                <p id="quick-actions-subtitle" data-brand-tagline class="text-[10px] uppercase tracking-[0.14em] text-slate-400 safe-text-wrap" style="display: none;"></p>
+
+              </div>
+
+            </div>
+
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-300/80 flex-shrink-0"></span>
+
+          </div>
+
+
+
+          <div class="quick-actions-bottom-grid">
+
+            <!-- Action 1: WhatsApp Daily Report Push (Includes UPI & PayPal Links) -->
+
+            <div class="p-5 glass-panel bento-glow-green flex flex-col justify-between">
+
+              <div>
+
+                <div class="quick-action-card-header">
+
+                  <div class="flex items-start gap-3 min-w-0 flex-1">
+
+                    <span class="lotech-icon-box text-emerald-400">
+
+                      <span class="material-symbols-outlined text-[17px]">chat</span>
+
+                    </span>
+
+                    <h4 class="quick-action-card-title text-emerald-300 font-semibold">WhatsApp Daily Report</h4>
+
+                  </div>
+
+                  <div class="quick-action-badge-group">
+
+                    <span class="lotech-status-badge btn-glass-mint font-label-code">wa.me + UPI</span>
+
+                  </div>
+
+                </div>
+
+                <p class="text-xs text-slate-300 leading-relaxed safe-text-wrap">
+
+                  Compile <strong class="text-white">Project Metrics, Partner Standings, Direct UPI URI &amp; PayPal Link</strong> into a clean WhatsApp dispatch.
+
+                </p>
+
+              </div>
+
+              <div class="flex items-center gap-2.5 pt-4 mt-2">
+
+                <button type="button" onclick="openWhatsAppReportModal()" class="flex-1 btn-lotech-lime btn-glass-mint">
+
+                  <span class="material-symbols-outlined">send</span>
+
+                  <span>WhatsApp Report</span>
+
+                </button>
+
+                <button type="button" onclick="quickPushWhatsAppReport()" class="btn-lotech-pill btn-glass-neutral font-label-code" title="Instant 1-Click WhatsApp Push">
+
+                  1-Click
+
+                </button>
+
+              </div>
+
+            </div>
+
+
+
+            <!-- Action 2: 3D Client Payment Modal (UPI QR + PayPal.me + Native Share) -->
+
+            <div class="p-5 glass-panel bento-glow-amber flex flex-col justify-between">
+
+              <div>
+
+                <div class="quick-action-card-header">
+
+                  <div class="flex items-start gap-3 min-w-0 flex-1">
+
+                    <span class="lotech-icon-box text-amber-300">
+
+                      <span class="material-symbols-outlined text-[17px]">qr_code_2</span>
+
+                    </span>
+
+                    <h4 class="quick-action-card-title text-amber-200 font-semibold">UPI QR &amp; PayPal Hub</h4>
+
+                  </div>
+
+                  <div class="quick-action-badge-group">
+
+                    <span class="lotech-status-badge btn-glass-amber font-label-code">Web Share API</span>
+
+                  </div>
+
+                </div>
+
+                <p class="text-xs text-slate-300 leading-relaxed safe-text-wrap">
+
+                  Open the 3D <strong class="text-white">Invoice &amp; Payment Card</strong> with scannable <strong class="text-amber-200">UPI QR (₹)</strong>, <strong class="text-sky-200">PayPal.me</strong> button, and <strong class="text-emerald-200">Direct Share</strong>.
+
+                </p>
+
+              </div>
+
+              <button type="button" onclick="openUpiQrModal()" class="mt-4 w-full btn-lotech-gold btn-glass-amber">
+
+                <span class="material-symbols-outlined">qr_code_scanner</span>
+
+                <span>Client Payment (UPI &amp; PayPal)</span>
+
+              </button>
+
+            </div>
+
+
+
+            <!-- Action 3: Bulk Currency Converter -->
+
+            <div class="p-5 glass-panel bento-glow-cyan flex flex-col justify-between">
+
+              <div>
+
+                <div class="quick-action-card-header">
+
+                  <div class="flex items-start gap-3 min-w-0 flex-1">
+
+                    <span class="lotech-icon-box text-sky-300">
+
+                      <span class="material-symbols-outlined text-[17px]">currency_exchange</span>
+
+                    </span>
+
+                    <h4 class="quick-action-card-title text-sky-300 font-semibold">FX to INR Converter</h4>
+
+                  </div>
+
+                  <div class="quick-action-badge-group">
+
+                    <span class="lotech-status-badge btn-glass-sky font-label-code">1 USD = ₹85</span>
+
+                  </div>
+
+                </div>
+
+                <p class="text-xs text-slate-300 leading-relaxed safe-text-wrap">
+
+                  Convert international client retainers (<strong class="text-sky-200">USD, EUR, GBP, AED, CAD</strong>) into Indian Rupees (<strong class="text-white">₹</strong>) in bulk.
+
+                </p>
+
+              </div>
+
+              <button type="button" onclick="openCurrencyConverterModal()" class="mt-4 w-full btn-glass-sky">
+
+                <span class="material-symbols-outlined">calculate</span>
+
+                <span>Open Bulk FX Converter</span>
+
+              </button>
+
+            </div>
+
+
+
+            <!-- Action 4: Configure Up to 10 Partners, UPI & PayPal.me -->
+
+            <div class="p-5 glass-panel bento-glow-cyan flex flex-col justify-between">
+
+              <div>
+
+                <div class="quick-action-card-header">
+
+                  <div class="flex items-start gap-3 min-w-0 flex-1">
+
+                    <span class="lotech-icon-box text-violet-300">
+
+                      <span class="material-symbols-outlined text-[17px]">groups</span>
+
+                    </span>
+
+                    <h4 class="quick-action-card-title text-violet-300 font-semibold">10-Partner &amp; Payment Setup</h4>
+
+                  </div>
+
+                  <div class="quick-action-badge-group">
+
+                    <span class="lotech-status-badge btn-glass-lavender font-label-code">Name-Centric</span>
+
+                  </div>
+
+                </div>
+
+                <p class="text-xs text-slate-300 leading-relaxed safe-text-wrap">
+
+                  Configure up to <strong class="text-white">10 partners</strong> (Name &amp; Role), studio branding, <strong class="text-amber-200">UPI ID</strong>, and <strong class="text-sky-200">PayPal.me link</strong>.
+
+                </p>
+
+              </div>
+
+              <button type="button" onclick="openApiSettingsModal()" class="mt-4 w-full btn-glass-lavender">
+
+                <span class="material-symbols-outlined">tune</span>
+
+                <span>Partners &amp; Sheet Config</span>
+
+              </button>
+
+            </div>
+
+          </div>
+
+        </section>
+
+      </div>
+
+    </main>
+
+  </div>
+
+
+
+  <!-- CLIENT DOSSIER & PROFIT MARGIN CALCULATOR MODAL -->
+
+  <div id="client-dossier-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 sm:p-6 overflow-y-auto"></div>
+
+
+
+    <!-- OFFLINE CLIENT-SIDE OCR ENGINE (Tesseract.js v5 - 100% In-Browser Privacy) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="app.js?v=20261103_v56"></script>
+
+</body>
+
+</html>
+

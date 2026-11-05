@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "on-tertiary-container": "#00311f",
+          "secondary-fixed": "#acedff",
+          "on-secondary": "#003640",
+          "background": "#0f131d",
+          "on-primary": "#3c0091",
+          "tertiary-fixed-dim": "#4edea3",
+          "surface-bright": "#353944",
+          "on-tertiary": "#003824",
+          "on-secondary-fixed": "#001f26",
+          "secondary": "#4cd7f6",
+          "surface-dim": "#0f131d",
+          "on-secondary-container": "#00424e",
+          "secondary-container": "#03b5d3",
+          "surface-container-low": "#171b26",
+          "surface-variant": "#313540",
+          "on-tertiary-fixed": "#002113",
+          "tertiary-fixed": "#6ffbbe",
+          "primary-fixed": "#e9ddff",
+          "error-container": "#93000a",
+          "tertiary": "#4edea3",
+          "outline-variant": "#494454",
+          "surface-tint": "#d0bcff",
+          "on-surface": "#dfe2f1",
+          "on-tertiary-fixed-variant": "#005236",
+          "on-surface-variant": "#cbc3d7",
+          "on-primary-fixed-variant": "#5516be",
+          "inverse-surface": "#dfe2f1",
+          "error": "#ffb4ab",
+          "on-background": "#dfe2f1",
+          "on-primary-fixed": "#23005c",
+          "inverse-on-surface": "#2c303b",
+          "inverse-primary": "#6d3bd7",
+          "surface-container-highest": "#313540",
+          "secondary-fixed-dim": "#4cd7f6",
+          "on-primary-container": "#340080",
+          "surface-container-lowest": "#0a0e18",
+          "surface-container-high": "#262a35",
+          "primary-container": "#a078ff",
+          "on-error-container": "#ffdad6",
+          "surface-container": "#1c1f2a",
+          "outline": "#958ea0",
+          "primary-fixed-dim": "#d0bcff",
+          "surface": "#0f131d",
+          "on-error": "#690005",
+          "primary": "#d0bcff",
+          "on-secondary-fixed-variant": "#004e5c",
+          "tertiary-container": "#00a572"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.25rem",
+          "lg": "0.5rem",
+          "xl": "0.75rem",
+          "full": "9999px"
+        },
+        "spacing": {
+          "gutter-mobile": "0.75rem",
+          "space-xl": "2.5rem",
+          "margin": "2rem",
+          "margin-mobile": "1rem",
+          "space-sm": "0.5rem",
+          "space-xs": "0.25rem",
+          "gutter": "1.25rem",
+          "space-md": "1rem",
+          "space-lg": "1.5rem"
+        },
+        "fontFamily": {
+          "headline-md": [
+            "Plus Jakarta Sans"
+          ],
+          "body-lg": [
+            "Plus Jakarta Sans"
+          ],
+          "label-code": [
+            "JetBrains Mono"
+          ],
+          "display-hero-mobile": [
+            "Plus Jakarta Sans"
+          ],
+          "headline-lg-mobile": [
+            "Plus Jakarta Sans"
+          ],
+          "body-md": [
+            "Plus Jakarta Sans"
+          ],
+          "display-hero": [
+            "Plus Jakarta Sans"
+          ],
+          "label-caps": [
+            "Plus Jakarta Sans"
+          ],
+          "label-timecode": [
+            "JetBrains Mono"
+          ],
+          "headline-lg": [
+            "Plus Jakarta Sans"
+          ],
+          "body-sm": [
+            "Plus Jakarta Sans"
+          ],
+          "headline-sm": [
+            "Plus Jakarta Sans"
+          ]
+        },
+        "fontSize": {
+          "headline-md": [
+            "20px",
+            {
+              "lineHeight": "28px",
+              "letterSpacing": "-0.015em",
+              "fontWeight": "600"
+            }
+          ],
+          "body-lg": [
+            "16px",
+            {
+              "lineHeight": "24px",
+              "letterSpacing": "0em",
+              "fontWeight": "400"
+            }
+          ],
+          "label-code": [
+            "12px",
+            {
+              "lineHeight": "16px",
+              "letterSpacing": "0.04em",
+              "fontWeight": "500"
+            }
+          ],
+          "display-hero-mobile": [
+            "30px",
+            {
+              "lineHeight": "38px",
+              "letterSpacing": "-0.02em",
+              "fontWeight": "700"
+            }
+          ],
+          "headline-lg-mobile": [
+            "22px",
+            {
+              "lineHeight": "30px",
+              "letterSpacing": "-0.01em",
+              "fontWeight": "600"
+            }
+          ],
+          "body-md": [
+            "14px",
+            {
+              "lineHeight": "20px",
+              "letterSpacing": "0em",
+              "fontWeight": "400"
+            }
+          ],
+          "display-hero": [
+            "40px",
+            {
+              "lineHeight": "48px",
+              "letterSpacing": "-0.03em",
+              "fontWeight": "700"
+            }
+          ],
+          "label-caps": [
+            "10px",
+            {
+              "lineHeight": "14px",
+              "letterSpacing": "0.08em",
+              "fontWeight": "700"
+            }
+          ],
+          "label-timecode": [
+            "11px",
+            {
+              "lineHeight": "14px",
+              "letterSpacing": "0.08em",
+              "fontWeight": "400"
+            }
+          ],
+          "headline-lg": [
+            "28px",
+            {
+              "lineHeight": "36px",
+              "letterSpacing": "-0.02em",
+              "fontWeight": "600"
+            }
+          ],
+          "body-sm": [
+            "12px",
+            {
+              "lineHeight": "18px",
+              "letterSpacing": "0.01em",
+              "fontWeight": "400"
+            }
+          ],
+          "headline-sm": [
+            "16px",
+            {
+              "lineHeight": "24px",
+              "letterSpacing": "0em",
+              "fontWeight": "600"
+            }
+          ]
+        }
+      },
+    },
+  }</script></head><body class="bg-background font-body-md text-body-md text-on-surface selection:bg-primary selection:text-on-primary"><aside class="fixed left-0 top-0 h-full w-72 bg-surface-container-lowest z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col"><div class="h-16 px-space-md flex items-center justify-between bg-surface-container-lowest/80 backdrop-blur-xl"><div class="flex items-center gap-space-sm"><div class="w-9 h-9 rounded-xl bg-primary-container flex items-center justify-center text-on-primary-container shadow-[0_0_16px_rgba(160,120,255,0.35)]"><span class="material-symbols-outlined text-[20px]">movie_edit</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">Frame3</span><span class="font-label-caps text-label-caps uppercase tracking-wider text-outline mt-0.5">CutCraft Studio</span></div></div><span class="px-space-xs py-0.5 bg-surface-container-high rounded font-label-code text-label-code text-secondary">v2.4</span></div><div class="px-space-md pt-space-md pb-space-xs"><span class="font-label-caps text-label-caps uppercase tracking-widest text-outline">Workspace Pipelines</span></div><nav class="flex flex-col gap-1 px-space-sm" data-active-classes="bg-surface-container-high text-on-surface font-semibold shadow-inner"><a aria-current="page" class="flex items-center justify-between px-space-md py-space-sm rounded-lg transition-colors bg-surface-container-high text-on-surface font-semibold shadow-inner" data-path="pipeline-kanban" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px] text-primary">view_kanban</span><span class="font-body-md text-body-md">Pipeline / Kanban</span></div><span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(208,188,255,0.8)]"></span></a><a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="smart-inbox" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px] text-secondary">all_inbox</span><span class="font-body-md text-body-md">Smart Inbox</span></div><span class="px-space-xs py-0.5 rounded-full bg-secondary-container text-on-secondary font-label-code text-label-code">5 New</span></a><a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="deliverables-reels" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px] text-tertiary">smart_display</span><span class="font-body-md text-body-md">Deliverables &amp; Reels</span></div><span class="font-label-code text-label-code text-outline">12 active</span></a><a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="clients-brands" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px] text-outline">verified_user</span><span class="font-body-md text-body-md">Clients &amp; Brands</span></div></a></nav></div><div class="p-space-md flex flex-col gap-space-md bg-surface-container-lowest"><div class="p-space-md rounded-xl bg-surface-container-low flex flex-col gap-space-xs"><div class="flex items-center justify-between text-outline font-label-caps text-label-caps uppercase tracking-wider"><span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">cloud</span> Frame.io / Drive</span><span class="font-label-code text-label-code text-secondary">56%</span></div><div class="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-primary to-secondary rounded-full w-[56%]"></div></div><div class="flex items-center justify-between text-outline-variant font-label-code text-label-code"><span>8.4 TB Used</span><span>15.0 TB Max</span></div></div><div class="pt-space-xs"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="agency-settings" href="#"><span class="material-symbols-outlined text-[20px]">tune</span><span class="font-body-md text-body-md">Agency Settings</span></a></div></div></aside><div class="pl-72 flex flex-col min-h-screen"><header class="fixed top-0 left-72 right-0 h-28 bg-surface-container-lowest/90 backdrop-blur-xl z-40 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex flex-col justify-between"><div class="h-16 px-space-lg flex items-center justify-between gap-space-lg"><div class="flex items-center gap-space-md flex-1 max-w-2xl"><div class="relative"><button class="h-9 px-space-md rounded-lg bg-surface-container-low text-on-surface hover:bg-surface-container-high transition-colors flex items-center gap-space-sm font-body-sm text-body-sm"><span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim"></span><span class="font-headline-sm text-headline-sm">All Leads (Agency Wide)</span><span class="material-symbols-outlined text-[18px] text-outline">keyboard_arrow_down</span></button></div><div class="relative flex-1"><div class="absolute inset-y-0 left-0 pl-space-md flex items-center pointer-events-none text-outline"><span class="material-symbols-outlined text-[18px]">search</span></div><input class="w-full h-9 pl-10 pr-12 rounded-lg bg-surface-container-low text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-high font-body-sm text-body-sm" placeholder="Search creative leads, brand handles, deliverables, reels..." type="text"/><div class="absolute inset-y-0 right-0 pr-space-sm flex items-center pointer-events-none"><span class="px-1.5 py-0.5 bg-surface-container-highest rounded text-outline font-label-code text-label-code">⌘K</span></div></div></div><div class="flex items-center gap-space-md"><button class="h-9 px-space-md rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm flex items-center gap-space-xs hover:bg-primary transition-colors hover:text-on-primary"><span class="material-symbols-outlined text-[18px]">add</span><span>New Lead</span></button><button class="relative w-9 h-9 rounded-lg bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface flex items-center justify-center transition-colors"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full ring-2 ring-surface-container-lowest"></span></button><div class="flex items-center gap-space-sm pl-space-xs"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></div><div class="h-12 px-space-lg flex items-center justify-between bg-surface-container-low text-body-sm font-body-sm overflow-x-auto gap-space-lg"><div class="flex items-center gap-space-lg"><div class="flex items-center gap-space-xs"><span class="text-outline font-label-caps text-label-caps uppercase">Agency Revenue:</span><span class="font-label-code text-label-code text-on-surface font-semibold">$284,500 YTD</span><span class="text-outline-variant">•</span><span class="font-label-code text-label-code text-tertiary">$42,800 MTD</span></div><div class="flex items-center gap-space-xs"><span class="text-outline font-label-caps text-label-caps uppercase">Unpaid Pipeline:</span><span class="font-label-code text-label-code text-secondary font-semibold">$68,400</span><span class="text-outline-variant font-label-caps text-label-caps">(14 Deals)</span></div></div><div class="flex items-center gap-space-md"><span class="text-outline font-label-caps text-label-caps uppercase">Partner Split:</span><div class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-primary"></span><span class="text-outline">Alex:</span><span class="font-label-code text-label-code text-on-surface">$18.2k</span></div><div class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-secondary"></span><span class="text-outline">Maya:</span><span class="font-label-code text-label-code text-on-surface">$14.8k</span></div><div class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-tertiary"></span><span class="text-outline">Dev:</span><span class="font-label-code text-label-code text-on-surface">$9.8k</span></div></div></div></header><main class="w-full pt-28 px-space-lg pb-space-xl flex-1 bg-surface"><div class="flex flex-col w-full gap-space-lg">
+<!-- Revenue Metrics & Health Strip -->
+<section class="w-full rounded-xl bg-surface-container-low p-space-lg relative overflow-hidden shadow-xl">
+<div class="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-primary/10 blur-3xl pointer-events-none"></div>
+<div class="absolute -left-16 -bottom-16 w-72 h-72 rounded-full bg-secondary/10 blur-3xl pointer-events-none"></div>
+<div class="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-space-lg">
+<!-- Left: Primary Aggregates -->
+<div class="flex flex-wrap items-center gap-space-xl">
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps uppercase tracking-widest text-outline">Total Agency Revenue</span>
+<div class="flex items-baseline gap-space-sm mt-1">
+<span class="font-display-hero text-display-hero text-on-surface tracking-tight font-bold">$284,500</span>
+<div class="flex items-center gap-1 px-space-xs py-0.5 rounded-full bg-tertiary-container/30 text-tertiary font-label-code text-label-code">
+<span class="material-symbols-outlined text-[14px]">trending_up</span>
+<span>+24% MoM (+$38.2k)</span>
+</div>
+</div>
+<span class="font-body-sm text-body-sm text-outline mt-0.5">Rolling Q3 Target: $350,000</span>
+</div>
+<div class="w-px h-12 bg-surface-container-highest hidden sm:block"></div>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps uppercase tracking-widest text-secondary">Unpaid Pipeline Value</span>
+<div class="flex items-baseline gap-space-sm mt-1">
+<span class="font-headline-lg text-headline-lg text-secondary tracking-tight font-semibold">$68,400</span>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-high text-on-surface font-label-code text-label-code">14 Deals</span>
+</div>
+<span class="font-body-sm text-body-sm text-outline mt-0.5">8 In Free/Paid Sample Phase</span>
+</div>
+</div>
+<!-- Right: Partner Revenue Share Split & Meter -->
+<div class="flex flex-col min-w-[320px] max-w-md bg-surface-container p-space-md rounded-xl">
+<div class="flex items-center justify-between pb-space-xs">
+<span class="font-label-caps text-label-caps uppercase text-outline tracking-wider">Partner Retainer Allocation</span>
+<span class="font-label-code text-label-code text-on-surface-variant font-medium">Monthly MTD: $42,800</span>
+</div>
+<!-- Multi-segment visual bar -->
+<div class="w-full h-2.5 rounded-full bg-surface-container-highest flex overflow-hidden my-space-xs">
+<div class="h-full bg-primary" style="width: 43%;" title="Alex (Video Ads) - 43%"></div>
+<div class="h-full bg-secondary" style="width: 35%;" title="Maya (Motion/VFX) - 35%"></div>
+<div class="h-full bg-tertiary" style="width: 22%;" title="Dev (Audio/Score) - 22%"></div>
+</div>
+<div class="grid grid-cols-3 gap-space-xs pt-space-xs text-left">
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary shadow-sm shadow-primary/50"></span>
+<span class="font-label-caps text-label-caps text-on-surface">Alex</span>
+</div>
+<span class="font-label-code text-label-code text-primary font-semibold">$18,400</span>
+<span class="font-label-code text-[10px] text-outline">43% • Ad Film</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-secondary shadow-sm shadow-secondary/50"></span>
+<span class="font-label-caps text-label-caps text-on-surface">Maya</span>
+</div>
+<span class="font-label-code text-label-code text-secondary font-semibold">$14,800</span>
+<span class="font-label-code text-[10px] text-outline">35% • VFX/3D</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-tertiary shadow-sm shadow-tertiary/50"></span>
+<span class="font-label-caps text-label-caps text-on-surface">Dev</span>
+</div>
+<span class="font-label-code text-label-code text-tertiary font-semibold">$9,600</span>
+<span class="font-label-code text-[10px] text-outline">22% • Audio</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Filter & Operation Control Hub -->
+<section class="flex flex-col gap-space-md bg-surface-container-low p-space-md rounded-xl">
+<div class="flex flex-wrap items-center justify-between gap-space-md">
+<!-- Partner Focus Pills -->
+<div class="flex items-center gap-1.5 bg-surface-container-lowest p-1 rounded-xl overflow-x-auto">
+<button class="px-space-md py-1 rounded-lg bg-surface-container-high text-on-surface font-body-sm text-body-sm font-semibold shadow-inner flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-on-surface"></span>
+<span>All Agency Leads</span>
+<span class="px-1.5 py-0.2 rounded-full bg-surface-container-highest text-outline font-label-code text-[11px]">26</span>
+</button>
+<button class="px-space-md py-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors font-body-sm text-body-sm flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span>Alex (Ads)</span>
+<span class="font-label-code text-outline text-[11px]">11</span>
+</button>
+<button class="px-space-md py-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors font-body-sm text-body-sm flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span>Maya (VFX)</span>
+<span class="font-label-code text-outline text-[11px]">8</span>
+</button>
+<button class="px-space-md py-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors font-body-sm text-body-sm flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span>Dev (Audio)</span>
+<span class="font-label-code text-outline text-[11px]">7</span>
+</button>
+</div>
+<!-- Action Group -->
+<div class="flex items-center gap-space-sm">
+<button class="h-9 px-space-md rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high font-body-sm text-body-sm flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[18px] text-outline">tune</span>
+<span>Sort: Value (High-Low)</span>
+</button>
+<button class="h-9 px-space-md rounded-lg bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary font-headline-sm text-headline-sm flex items-center gap-1.5 transition-colors shadow-lg shadow-primary-container/20">
+<span class="material-symbols-outlined text-[18px]">add_circle</span>
+<span>+ New Client Lead</span>
+</button>
+</div>
+</div>
+<!-- Sub-Filters: Channels & Live Search -->
+<div class="flex flex-wrap items-center justify-between gap-space-md pt-space-xs">
+<!-- Outreach Channels Horizontal Scroll -->
+<div class="flex items-center gap-space-xs overflow-x-auto text-body-sm font-body-sm">
+<span class="font-label-caps text-label-caps text-outline uppercase mr-1">Source:</span>
+<button class="px-2.5 py-1 rounded-full bg-primary/20 text-primary font-medium text-xs">All Sources</button>
+<button class="px-2.5 py-1 rounded-full bg-surface-container text-outline hover:text-on-surface hover:bg-surface-container-high transition text-xs flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Cold Email
+        </button>
+<button class="px-2.5 py-1 rounded-full bg-surface-container text-outline hover:text-on-surface hover:bg-surface-container-high transition text-xs flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span> LinkedIn DM
+        </button>
+<button class="px-2.5 py-1 rounded-full bg-surface-container text-outline hover:text-on-surface hover:bg-surface-container-high transition text-xs flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Upwork Enterprise
+        </button>
+<button class="px-2.5 py-1 rounded-full bg-surface-container text-outline hover:text-on-surface hover:bg-surface-container-high transition text-xs flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-pink-400"></span> Instagram DM
+        </button>
+<button class="px-2.5 py-1 rounded-full bg-surface-container text-outline hover:text-on-surface hover:bg-surface-container-high transition text-xs flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span> X/Twitter Inbound
+        </button>
+</div>
+<!-- Quick Filter for Sample Status -->
+<div class="flex items-center gap-space-xs text-body-sm font-body-sm">
+<span class="font-label-caps text-label-caps text-outline uppercase mr-1">Filter Sample:</span>
+<button class="px-2 py-0.5 rounded bg-surface-container text-outline hover:text-on-surface text-xs font-label-code">All</button>
+<button class="px-2 py-0.5 rounded bg-surface-container text-amber-300 hover:bg-amber-950/40 text-xs font-label-code">In Prep (3)</button>
+<button class="px-2 py-0.5 rounded bg-surface-container text-secondary hover:bg-secondary/20 text-xs font-label-code">Delivered (5)</button>
+</div>
+</div>
+</section>
+<!-- Workspace Grid: Kanban Board (Left 9 cols / flex-1) + Creative Ops Copilot (Right Panel) -->
+<div class="grid grid-cols-1 2xl:grid-cols-12 gap-space-lg items-start">
+<!-- 5-Column Kanban Board Engine -->
+<div class="2xl:col-span-9 flex flex-col gap-space-md">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-space-md items-start">
+<!-- Column 1: Identified / Outreach -->
+<div class="flex flex-col gap-space-sm bg-surface-container-lowest rounded-xl p-space-sm min-h-[700px]">
+<!-- Column Header -->
+<div class="p-space-sm rounded-lg bg-surface-container flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-outline"></span>
+                Identified
+              </span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-code text-label-code">5</span>
+</div>
+<div class="flex items-center justify-between text-outline font-label-code text-[11px]">
+<span>Outreach Batch</span>
+<span class="text-on-surface font-semibold">$14,200</span>
+</div>
+</div>
+<!-- Cards Stack -->
+<div class="flex flex-col gap-space-sm">
+<!-- Card 1 -->
+<div class="group p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-semibold text-on-surface group-hover:text-primary transition-colors">Aura Health</h4>
+<p class="font-label-code text-xs text-outline">@aurawellness</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">🇺🇸 US</span>
+</div>
+<!-- Service Badge -->
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container text-xs text-primary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">smartphone</span>
+<span class="truncate">Vertical Video Ads (TikTok)</span>
+</div>
+<!-- Channel & Value -->
+<div class="flex items-center justify-between pt-1">
+<span class="px-2 py-0.5 rounded bg-pink-950/40 text-pink-300 font-label-code text-[11px]">Instagram DM</span>
+<span class="font-label-code text-xs font-semibold text-on-surface">$3,500 / mo</span>
+</div>
+<!-- Partner & Sample -->
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-label-code text-[10px] font-bold">A</div>
+<span class="font-body-sm text-xs text-outline">Alex</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-amber-950/40 text-amber-300 font-label-code text-[10px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">schedule</span> Free Sample: Pending
+                </span>
+</div>
+<!-- Quick Actions -->
+<div class="flex items-center gap-1 pt-2">
+<button class="flex-1 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">mail</span> Follow-up
+                </button>
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-outline hover:text-on-surface text-[11px] transition-colors" title="Reassign Partner">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="group p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-semibold text-on-surface group-hover:text-secondary transition-colors">Kora Watches</h4>
+<p class="font-label-code text-xs text-outline">@koratimepieces</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">🇨🇦 CA</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container text-xs text-secondary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">view_in_ar</span>
+<span class="truncate">3D Motion &amp; Blender VFX</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="px-2 py-0.5 rounded bg-indigo-950/40 text-indigo-300 font-label-code text-[11px]">Cold Email</span>
+<span class="font-label-code text-xs font-semibold text-on-surface">$4,800 Retainer</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-secondary/20 text-secondary flex items-center justify-center font-label-code text-[10px] font-bold">M</div>
+<span class="font-body-sm text-xs text-outline">Maya</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-outline font-label-code text-[10px]">Uncontacted</span>
+</div>
+<div class="flex items-center gap-1 pt-2">
+<button class="flex-1 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">send</span> Pitch Cut
+                </button>
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-outline hover:text-on-surface text-[11px]" title="Reassign Partner">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Column 2: In Discussion -->
+<div class="flex flex-col gap-space-sm bg-surface-container-lowest rounded-xl p-space-sm min-h-[700px]">
+<div class="p-space-sm rounded-lg bg-surface-container flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                In Discussion
+              </span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-secondary font-label-code text-label-code">4</span>
+</div>
+<div class="flex items-center justify-between text-outline font-label-code text-[11px]">
+<span>Active Dialogue</span>
+<span class="text-on-surface font-semibold">$19,500</span>
+</div>
+</div>
+<div class="flex flex-col gap-space-sm">
+<!-- Card 3 -->
+<div class="group p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-semibold text-on-surface group-hover:text-primary transition-colors">Bolt Checkout</h4>
+<p class="font-label-code text-xs text-outline">@boltpay</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">🇺🇸 US</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container text-xs text-primary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">movie_creation</span>
+<span class="truncate">Commercial Ad Film (Full)</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="px-2 py-0.5 rounded bg-sky-950/40 text-sky-300 font-label-code text-[11px]">LinkedIn DM</span>
+<span class="font-label-code text-xs font-semibold text-secondary">$6,500 Milestone</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-label-code text-[10px] font-bold">A</div>
+<span class="font-body-sm text-xs text-outline">Alex</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-secondary-container/40 text-secondary font-label-code text-[10px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">play_circle</span> Script Approved
+                </span>
+</div>
+<div class="flex items-center gap-1 pt-2">
+<button class="flex-1 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">chat</span> Book Zoom
+                </button>
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-outline hover:text-on-surface text-[11px]" title="Reassign">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="group p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-semibold text-on-surface group-hover:text-tertiary transition-colors">Loomis Bio Labs</h4>
+<p class="font-label-code text-xs text-outline">@loomisbio</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">🇩🇪 DE</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container text-xs text-tertiary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">graphic_eq</span>
+<span class="truncate">Podcast Video Repurposing</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="px-2 py-0.5 rounded bg-emerald-950/40 text-emerald-300 font-label-code text-[11px]">Upwork Enterprise</span>
+<span class="font-label-code text-xs font-semibold text-on-surface">$5,000 / mo</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-tertiary/20 text-tertiary flex items-center justify-center font-label-code text-[10px] font-bold">D</div>
+<span class="font-body-sm text-xs text-outline">Dev</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-amber-950/40 text-amber-300 font-label-code text-[10px]">Trial Scope Prep</span>
+</div>
+<div class="flex items-center gap-1 pt-2">
+<button class="flex-1 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">mail</span> Follow-up
+                </button>
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-outline hover:text-on-surface text-[11px]" title="Reassign">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Column 3: Sample in Production (CRUCIAL STAGE - HIGH ACCENT) -->
+<div class="flex flex-col gap-space-sm bg-surface-container-low rounded-xl p-space-sm min-h-[700px] shadow-lg">
+<div class="p-space-sm rounded-lg bg-surface-container-high flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded-full bg-primary-container shadow-md shadow-primary"></span>
+                Sample Cut
+              </span>
+<span class="px-2 py-0.5 rounded-full bg-primary text-on-primary font-label-code text-label-code font-bold">6 Active</span>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-label-code text-[11px]">
+<span class="text-secondary font-medium">Free/Paid In-Edit</span>
+<span class="text-on-surface font-bold">$26,800</span>
+</div>
+</div>
+<div class="flex flex-col gap-space-sm">
+<!-- Card 5 (Featured Card with Frame.io scrubber link) -->
+<div class="group p-space-md rounded-xl bg-surface-container hover:bg-surface-container-highest transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-bold text-on-surface group-hover:text-primary transition-colors">Neon Energy Drink</h4>
+<p class="font-label-code text-xs text-outline">@neonrush</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant font-medium">🇬🇧 UK</span>
+</div>
+<!-- Video Thumbnail Well -->
+<div class="relative w-full h-24 rounded-lg overflow-hidden bg-surface-container-lowest">
+<div class="w-full h-full bg-cover bg-center" data-alt="High energy cyberpunk athletic commercial freeze frame with vibrant electric neon green backlight and kinetic motion blur" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCKJF0KPifzJ1TckFH2m0WWdVxevlMFXA7wk2nAu60pJcejnjoB3A5vkDByTINvNuxoNQjBPdgcaFnh2rCmPr0Y9fVPhnz9dJTIqLq5kBym-aFboAww7mHd1aXeggW7kn56m43_2IeyOCRBlFU4buDdniW4t57pZwRmhKqhkVLEtQgxtEN5Jsy6yrmM9RTQm-9OpPXoSmR7EvWjMi-uRMjG130PlWUDoipgsQaRgwwt')"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent flex items-end justify-between p-2">
+<span class="px-1.5 py-0.5 rounded bg-surface-container-lowest/80 text-secondary font-label-timecode text-[10px]">00:00:15:00</span>
+<span class="px-1.5 py-0.5 rounded bg-primary text-on-primary font-label-caps text-[9px] font-bold">4K ProRes</span>
+</div>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container-lowest text-xs text-primary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">bolt</span>
+<span class="truncate">Vertical Video Ads (Reels)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="px-2 py-0.5 rounded bg-indigo-950/40 text-indigo-300 font-label-code text-[11px]">Cold Email</span>
+<span class="font-label-code text-xs font-bold text-on-surface">$5,400 / mo</span>
+</div>
+<!-- High-Visibility Free Sample Delivered Indicator -->
+<div class="flex items-center justify-between p-1.5 rounded-lg bg-surface-container-lowest">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-code text-[10px] font-bold">A</div>
+<span class="font-body-sm text-xs text-on-surface">Alex</span>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-primary/20 text-primary font-label-code text-[11px] font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">play_circle</span> Free Sample: Delivered
+                </span>
+</div>
+<!-- Direct Actions -->
+<div class="flex items-center gap-1 pt-1">
+<button class="flex-1 py-1.5 rounded bg-secondary-container text-on-secondary hover:bg-secondary font-body-sm text-xs font-semibold flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[15px]">smart_display</span> Frame.io (4 Views)
+                </button>
+<button class="py-1.5 px-2 rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-body-sm flex items-center gap-1" title="Automated follow up sequence">
+<span class="material-symbols-outlined text-[15px]">send</span>
+</button>
+</div>
+</div>
+<!-- Card 6: Spatial Audio Sample -->
+<div class="group p-space-md rounded-xl bg-surface-container hover:bg-surface-container-highest transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-bold text-on-surface group-hover:text-tertiary transition-colors">Apex Fintech</h4>
+<p class="font-label-code text-xs text-outline">@apexfin</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant font-medium">🇦🇺 AU</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container-lowest text-xs text-tertiary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">headphones</span>
+<span class="truncate">Audio Mix &amp; Sound Design (Spatial)</span>
+</div>
+<!-- Audio waveform snippet element -->
+<div class="p-2 rounded bg-surface-container-lowest flex items-center justify-between gap-2">
+<div class="flex items-end gap-1 h-4 flex-1">
+<span class="w-1 h-2 bg-tertiary rounded-full"></span>
+<span class="w-1 h-3 bg-tertiary rounded-full"></span>
+<span class="w-1 h-4 bg-tertiary rounded-full"></span>
+<span class="w-1 h-2 bg-tertiary rounded-full"></span>
+<span class="w-1 h-3 bg-tertiary rounded-full"></span>
+<span class="w-1 h-4 bg-tertiary rounded-full"></span>
+<span class="w-1 h-2 bg-tertiary-fixed-dim rounded-full"></span>
+<span class="w-1 h-3 bg-tertiary-fixed-dim rounded-full"></span>
+</div>
+<span class="font-label-code text-[10px] text-tertiary">Dolby Atmos V1</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="px-2 py-0.5 rounded bg-emerald-950/40 text-emerald-300 font-label-code text-[11px]">Upwork Enterprise</span>
+<span class="font-label-code text-xs font-bold text-on-surface">$3,200 Escrow</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center font-label-code text-[10px] font-bold">D</div>
+<span class="font-body-sm text-xs text-on-surface">Dev</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-secondary-container/40 text-secondary font-label-code text-[10px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">sync</span> Paid Sample: In Review
+                </span>
+</div>
+<div class="flex items-center gap-1 pt-1">
+<button class="flex-1 py-1 rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">headphones</span> Play Atmos Cut
+                </button>
+<button class="px-2 py-1 rounded bg-surface-container-high hover:bg-surface-container-highest text-outline hover:text-on-surface text-[11px]" title="Reassign Partner">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 7 -->
+<div class="group p-space-md rounded-xl bg-surface-container hover:bg-surface-container-highest transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-bold text-on-surface group-hover:text-secondary transition-colors">HyperScale SaaS</h4>
+<p class="font-label-code text-xs text-outline">@hyperscale</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant font-medium">🇮🇳 IN</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container-lowest text-xs text-secondary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">animation</span>
+<span class="truncate">3D Product Tour &amp; UI VFX</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="px-2 py-0.5 rounded bg-sky-950/40 text-sky-300 font-label-code text-[11px]">LinkedIn DM</span>
+<span class="font-label-code text-xs font-bold text-on-surface">₹2,80,000 Milestone</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-secondary text-on-secondary flex items-center justify-center font-label-code text-[10px] font-bold">M</div>
+<span class="font-body-sm text-xs text-on-surface">Maya</span>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-amber-950/50 text-amber-300 font-label-code text-[10px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">brush</span> Free Sample: Pending (12s Hook)
+                </span>
+</div>
+<div class="flex items-center gap-1 pt-1">
+<button class="flex-1 py-1 rounded bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">mail</span> Nudge Assets
+                </button>
+<button class="px-2 py-1 rounded bg-surface-container-high hover:bg-surface-container-highest text-outline hover:text-on-surface text-[11px]" title="Reassign">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Column 4: Approved / Onboarded -->
+<div class="flex flex-col gap-space-sm bg-surface-container-lowest rounded-xl p-space-sm min-h-[700px]">
+<div class="p-space-sm rounded-lg bg-surface-container flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+                Approved
+              </span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-tertiary font-label-code text-label-code">3</span>
+</div>
+<div class="flex items-center justify-between text-outline font-label-code text-[11px]">
+<span>Contract Signoff</span>
+<span class="text-on-surface font-semibold">$12,400</span>
+</div>
+</div>
+<div class="flex flex-col gap-space-sm">
+<!-- Card 8 -->
+<div class="group p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-semibold text-on-surface group-hover:text-primary transition-colors">Studio Gents</h4>
+<p class="font-label-code text-xs text-outline">@studiogents</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">🇬🇧 UK</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container text-xs text-primary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">video_camera_front</span>
+<span class="truncate">YouTube Docu-Ad Series</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="px-2 py-0.5 rounded bg-indigo-950/40 text-indigo-300 font-label-code text-[11px]">Cold Email</span>
+<span class="font-label-code text-xs font-semibold text-tertiary">50% Upfront Paid</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-label-code text-[10px] font-bold">A</div>
+<span class="font-body-sm text-xs text-outline">Alex</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-tertiary-container/40 text-tertiary font-label-code text-[10px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">verified</span> Sample Approved
+                </span>
+</div>
+<div class="flex items-center gap-1 pt-2">
+<button class="flex-1 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">folder_shared</span> Notion Portal
+                </button>
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-outline hover:text-on-surface text-[11px]" title="Reassign">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 9 -->
+<div class="group p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-semibold text-on-surface group-hover:text-secondary transition-colors">Urban Kicks Ltd</h4>
+<p class="font-label-code text-xs text-outline">@urbankicks</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">🇺🇸 US</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container text-xs text-secondary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">view_in_ar</span>
+<span class="truncate">3D CGI Shoe Disassembly</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="px-2 py-0.5 rounded bg-pink-950/40 text-pink-300 font-label-code text-[11px]">Instagram DM</span>
+<span class="font-label-code text-xs font-semibold text-on-surface">$6,000 Net 15</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-secondary/20 text-secondary flex items-center justify-center font-label-code text-[10px] font-bold">M</div>
+<span class="font-body-sm text-xs text-outline">Maya</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-outline font-label-code text-[10px]">Onboarding Call Set</span>
+</div>
+<div class="flex items-center gap-1 pt-2">
+<button class="flex-1 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">mail</span> Send Invoice
+                </button>
+<button class="px-2 py-1 rounded bg-surface-container hover:bg-surface-container-high text-outline hover:text-on-surface text-[11px]" title="Reassign">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Column 5: Closed Won / Paid -->
+<div class="flex flex-col gap-space-sm bg-surface-container-lowest rounded-xl p-space-sm min-h-[700px]">
+<div class="p-space-sm rounded-lg bg-surface-container flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-headline-sm text-headline-sm text-on-surface flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-tertiary-container"></span>
+                Closed Won
+              </span>
+<span class="px-2 py-0.5 rounded-full bg-tertiary-container text-on-tertiary font-label-code text-label-code font-bold">8 Paid</span>
+</div>
+<div class="flex items-center justify-between text-outline font-label-code text-[11px]">
+<span>Collected / Retainers</span>
+<span class="text-tertiary font-bold">$48,200</span>
+</div>
+</div>
+<div class="flex flex-col gap-space-sm">
+<!-- Card 10 -->
+<div class="group p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-semibold text-on-surface group-hover:text-primary transition-colors">GymShark Creators</h4>
+<p class="font-label-code text-xs text-outline">@gymshark_media</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">🇬🇧 UK</span>
+</div>
+<!-- Media asset showcase thumbnail -->
+<div class="relative w-full h-20 rounded-lg overflow-hidden bg-surface-container-lowest">
+<div class="w-full h-full bg-cover bg-center" data-alt="High contrast fitness documentary film frame of a barbell lift in a moody dark warehouse gym with dramatic rim lighting" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD8W8OqFaDefDcSrdDxwG7VHnl0RsINvVqMztC1CyOjXVk2VsD4UPZyqSVpKiF66BIPOR1jE6Mc7lLuDmdUkGrKyKXrdySNeqG-VMrYk3FHKPhzV0dAqvoBmd8a1SzpUCnrcAq7NnclL6JjmiGXCzif2-tMbHTZFJv7T6vTCE6GV7Qh_9QtOhfCLHXzmp9ZTeDfWVBDqozgPA2O6VkJWbddmy8Pp9-_z_63rv453qgh')"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent flex items-end justify-between p-1.5">
+<span class="px-1.5 py-0.2 rounded bg-tertiary text-on-tertiary font-label-caps text-[9px] font-bold">DELIVERED</span>
+</div>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container text-xs text-primary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">movie_edit</span>
+<span class="truncate">Monthly Ad Retainer (12 Reels)</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="px-2 py-0.5 rounded bg-sky-950/40 text-sky-300 font-label-code text-[11px]">LinkedIn DM</span>
+<span class="font-label-code text-xs font-bold text-tertiary">$12,000 / mo Paid</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-code text-[10px] font-bold">A</div>
+<span class="font-body-sm text-xs text-outline">Alex (Lead)</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-tertiary font-label-code text-[10px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">check_circle</span> Recurring
+                </span>
+</div>
+<div class="flex items-center gap-1 pt-2">
+<button class="flex-1 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">receipt_long</span> Invoice #F3-882
+                </button>
+</div>
+</div>
+<!-- Card 11 -->
+<div class="group p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-md flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-1">
+<div>
+<h4 class="font-headline-sm text-body-md font-semibold text-on-surface group-hover:text-tertiary transition-colors">Liquid Death Canned</h4>
+<p class="font-label-code text-xs text-outline">@liquiddeath</p>
+</div>
+<span class="text-xs px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">🇺🇸 US</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-1 rounded bg-surface-container text-xs text-tertiary font-body-sm">
+<span class="material-symbols-outlined text-[14px]">spatial_audio</span>
+<span class="truncate">Sound Design &amp; Heavy Metal Mix</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="px-2 py-0.5 rounded bg-cyan-950/40 text-cyan-300 font-label-code text-[11px]">X Inbound</span>
+<span class="font-label-code text-xs font-bold text-tertiary">$8,500 Complete</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5">
+<div class="w-5 h-5 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center font-label-code text-[10px] font-bold">D</div>
+<span class="font-body-sm text-xs text-outline">Dev</span>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-outline font-label-code text-[10px]">Master Shipped</span>
+</div>
+<div class="flex items-center gap-1 pt-2">
+<button class="flex-1 py-1 rounded bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[14px]">drive_file_move</span> Google Drive
+                </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Drawer: Creative Ops AI Copilot -->
+<aside class="2xl:col-span-3 flex flex-col gap-space-md">
+<!-- Copilot Main Card -->
+<div class="p-space-lg rounded-xl bg-surface-container-low flex flex-col gap-space-md shadow-xl relative overflow-hidden">
+<div class="absolute top-0 right-0 w-36 h-36 bg-primary/10 rounded-full blur-2xl pointer-events-none"></div>
+<!-- Header -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-lg bg-primary-container text-on-primary-container flex items-center justify-center shadow-md shadow-primary/20">
+<span class="material-symbols-outlined text-[18px]">smart_toy</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Creative Ops Copilot</h3>
+<p class="font-label-caps text-label-caps uppercase text-outline">Autonomous Agent</p>
+</div>
+</div>
+<span class="w-2 h-2 rounded-full bg-tertiary shadow-sm shadow-tertiary"></span>
+</div>
+<!-- Copilot Insights / Live Trigger List -->
+<div class="flex flex-col gap-space-sm pt-space-xs">
+<!-- Insight 1: Sample follow-up needed -->
+<div class="p-space-md rounded-xl bg-surface-container flex flex-col gap-space-xs hover:bg-surface-container-high transition-colors">
+<div class="flex items-center justify-between">
+<span class="flex items-center gap-1 text-secondary font-label-caps text-label-caps uppercase">
+<span class="material-symbols-outlined text-[14px]">visibility</span> Frame.io Activity
+              </span>
+<span class="font-label-code text-[11px] text-outline">18m ago</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface leading-snug">
+<strong class="text-secondary">Neon Energy Drink</strong> viewed the 9:16 sample reel <strong class="text-on-surface font-semibold">4 times</strong> without replying.
+            </p>
+<div class="p-2 rounded bg-surface-container-lowest text-outline-variant font-label-code text-[11px]">
+              Prompt: "Hey Neon team, noticed you looped the hook. Version B with kinetic beat sync drops the churn by 30%."
+            </div>
+<button class="mt-1 w-full py-1.5 rounded-lg bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary font-body-sm text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[15px]">send</span> One-Click Send Sequence
+            </button>
+</div>
+<!-- Insight 2: Workload Balancing -->
+<div class="p-space-md rounded-xl bg-surface-container flex flex-col gap-space-xs hover:bg-surface-container-high transition-colors">
+<div class="flex items-center justify-between">
+<span class="flex items-center gap-1 text-tertiary font-label-caps text-label-caps uppercase">
+<span class="material-symbols-outlined text-[14px]">balance</span> Bandwidth Balance
+              </span>
+<span class="font-label-code text-[11px] text-tertiary font-semibold">Dev (Audio)</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface leading-snug">
+              Dev (Partner C) has bandwidth for <strong class="text-tertiary">2 audio post gigs</strong> this week. Alex is at 94% capacity.
+            </p>
+<div class="flex items-center justify-between text-outline font-label-code text-xs pt-1">
+<span>Auto-route:</span>
+<span class="text-on-surface font-semibold">Sound Design leads directly to Dev</span>
+</div>
+<button class="mt-1 w-full py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-body-sm text-xs flex items-center justify-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[15px]">tune</span> Adjust Routing Rules
+            </button>
+</div>
+<!-- Insight 3: Unpaid Retainer Warning -->
+<div class="p-space-md rounded-xl bg-surface-container flex flex-col gap-space-xs hover:bg-surface-container-high transition-colors">
+<div class="flex items-center justify-between">
+<span class="flex items-center gap-1 text-error font-label-caps text-label-caps uppercase">
+<span class="material-symbols-outlined text-[14px]">warning</span> Invoice Due
+              </span>
+<span class="font-label-code text-[11px] text-error font-semibold">Net 15 Expiring</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface leading-snug">
+<strong class="text-on-surface">Urban Kicks Ltd ($6,000)</strong> contract signed 12 days ago without deposit transfer.
+            </p>
+<button class="mt-1 w-full py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-error font-body-sm text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[15px]">notifications_active</span> Auto-Ping Finance Team
+            </button>
+</div>
+</div>
+<!-- Quick Sample Conversion Metric -->
+<div class="mt-space-xs p-space-md rounded-xl bg-surface-container-lowest flex flex-col gap-2">
+<div class="flex items-center justify-between font-label-caps text-label-caps uppercase text-outline">
+<span>Free Sample-to-Paid Win Rate</span>
+<span class="font-label-code text-label-code text-primary font-bold">68.4%</span>
+</div>
+<div class="w-full h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary via-secondary to-tertiary rounded-full w-[68.4%]"></div>
+</div>
+<span class="font-body-sm text-[11px] text-outline">Average cycle: 4.2 days from preview to signed retainer</span>
+</div>
+</div>
+</aside>
+</div>
+</div></main></div><link href="../../styles.css" rel="stylesheet"/><script src="../../app.js"></script></body></html>

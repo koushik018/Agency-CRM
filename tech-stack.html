@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html class="light" data-theme="light" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Software Subscriptions (INR ₹) for beRich CRM</title>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+    <script>
+    (function() {
+      const savedTheme = localStorage.getItem('crm_theme_mode') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      } else {
+        document.documentElement.classList.add('light');
+        document.documentElement.classList.remove('dark');
+      }
+    })();
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="styles.css?v=20261103_v56" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+                    colors: {
+            "background": "#F4F1FB",
+            "surface": "#FFFFFF",
+            "surface-dim": "#ECE7F8",
+            "surface-bright": "#FFFFFF",
+            "surface-container": "#FFFFFF",
+            "surface-container-low": "#F4F1FB",
+            "surface-container-lowest": "#FFFFFF",
+            "surface-container-high": "#ECE7F8",
+            "surface-container-highest": "#D6CEEA",
+            "on-surface": "#1B1624",
+            "on-surface-variant": "#3A2F5C",
+            "on-background": "#1B1624",
+            "primary": "#6A2FEA",
+            "primary-container": "#EFE9FD",
+            "primary-fixed": "#EFE9FD",
+            "on-primary": "#FFFFFF",
+            "on-primary-container": "#312E81",
+            "secondary": "#0284C7",
+            "secondary-container": "#E0F2FE",
+            "on-secondary": "#FFFFFF",
+            "on-secondary-container": "#075985",
+            "tertiary": "#059669",
+            "tertiary-container": "#ECFDF5",
+            "on-tertiary": "#FFFFFF",
+            "on-tertiary-container": "#065F46",
+            "outline": "#5B5370",
+            "outline-variant": "#C4BBDD",
+            "error": "#E11D48",
+            "error-container": "#FFE4E6",
+            "on-error": "#FFFFFF",
+            "on-error-container": "#9F1239"
+          },
+          spacing: {
+            "gutter-mobile": "0.75rem",
+            "space-xl": "2.5rem",
+            "margin": "2rem",
+            "margin-mobile": "1rem",
+            "space-sm": "0.5rem",
+            "space-xs": "0.25rem",
+            "gutter": "1.25rem",
+            "space-md": "1rem",
+            "space-lg": "1.5rem"
+          },
+          fontFamily: {
+            "headline-md": ["Plus Jakarta Sans"],
+            "body-lg": ["Plus Jakarta Sans"],
+            "label-code": ["JetBrains Mono"],
+            "body-md": ["Plus Jakarta Sans"],
+            "display-hero": ["Plus Jakarta Sans"],
+            "label-caps": ["Plus Jakarta Sans"],
+            "headline-lg": ["Plus Jakarta Sans"],
+            "body-sm": ["Plus Jakarta Sans"],
+            "headline-sm": ["Plus Jakarta Sans"]
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] font-body-md selection:bg-indigo-100 selection:text-indigo-900 min-h-screen">
+  <aside class="fixed left-0 top-0 h-full w-72 bg-surface-container-lowest z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+    <div class="flex flex-col">
+      <div onclick="openApiSettingsModal()" title="Click to customize Agency Name, Subtitle &amp; 3 Partners" class="group cursor-pointer h-16 px-space-md flex items-center justify-between bg-surface-container-lowest/80 hover:bg-surface-container-low backdrop-blur-xl transition-colors">
+        <div class="flex items-center gap-space-sm min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-primary-container flex items-center justify-center text-on-primary-container shadow-[0_0_16px_rgba(160,120,255,0.35)] flex-shrink-0">
+            <span class="material-symbols-outlined text-[20px]">movie_edit</span>
+          </div>
+          <div class="flex flex-col min-w-0">
+            <div class="flex items-center gap-1">
+              <span data-brand-name class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none font-bold truncate">beRich</span>
+              <span class="material-symbols-outlined text-[13px] text-outline opacity-0 group-hover:opacity-100 transition-opacity">edit</span>
+            </div>
+            <span data-brand-tagline class="font-label-caps text-[10px] uppercase tracking-wider text-outline mt-0.5 truncate">KEEP IT MOVING</span>
+          </div>
+        </div>
+        <span class="px-space-xs py-0.5 bg-surface-container-high rounded font-label-code text-xs text-tertiary flex-shrink-0">INR ₹</span>
+      </div>
+      <div class="px-space-md pt-space-md pb-space-xs">
+        <span class="font-label-caps text-[10px] uppercase tracking-widest text-outline">Workspace Pipelines</span>
+      </div>
+      <nav class="flex flex-col gap-1 px-space-sm">
+        <a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="index.html">
+          <div class="flex items-center gap-space-sm">
+            <span class="material-symbols-outlined text-[20px] text-primary">view_kanban</span>
+            <span>Project Board</span>
+          </div>
+        </a>
+        <a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#" onclick="openCurrencyConverterModal(); return false;">
+          <div class="flex items-center gap-space-sm">
+            <span class="material-symbols-outlined text-[20px] text-tertiary">currency_exchange</span>
+            <span>Currency Converter</span>
+          </div>
+        </a>
+        <a aria-current="page" class="flex items-center justify-between px-space-md py-space-sm rounded-lg bg-surface-container-high text-on-surface font-semibold shadow-inner" href="tech-stack.html">
+          <div class="flex items-center gap-space-sm">
+            <span class="material-symbols-outlined text-[20px] text-secondary">terminal</span>
+            <span>Software Subscriptions</span>
+          </div>
+          <span id="nav-tech-stack-burn" class="px-space-xs py-0.5 rounded-full bg-surface-container-highest text-secondary font-label-code text-[10px]">₹0/mo</span>
+        </a>
+        <a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="receipt.html">
+          <div class="flex items-center gap-space-sm">
+            <span class="material-symbols-outlined text-[20px] text-tertiary">receipt_long</span>
+            <span>Expense &amp; PDF Receipt</span>
+          </div>
+        </a>
+        <a class="flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" href="#" onclick="openActivityLedgerModal(); return false;">
+          <div class="flex items-center gap-space-sm">
+            <span class="material-symbols-outlined text-[20px] text-primary">history</span>
+            <span>Team History</span>
+          </div>
+          <span data-activity-log-count class="px-2 py-0.5 rounded-full bg-surface-container-highest text-tertiary font-label-code text-[10px]">0 Events</span>
+        </a>
+      </nav>
+    </div>
+    <div class="p-space-md">
+      <button type="button" onclick="openApiSettingsModal()" class="w-full flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors">
+        <div class="flex items-center gap-space-sm">
+          <span class="material-symbols-outlined text-[20px] text-tertiary">group</span>
+          <span>3-Partners &amp; Sheet Config</span>
+        </div>
+      </button>
+    </div>
+  </aside>
+
+  <div class="pl-72 flex flex-col min-h-screen relative z-10">
+    <header class="sticky top-0 w-full glass-header z-40 flex flex-col">
+      <div class="header-top-row">
+        <div class="flex flex-col min-w-[280px] flex-1">
+          <h1 class="font-headline-lg text-xl font-bold text-on-surface safe-header-title" style="white-space: normal; word-break: keep-all; overflow-wrap: normal;">Tech Stack &amp; Subscriptions Inventory (INR ₹)</h1>
+          <p class="text-xs text-outline">Synced with Google Sheets <code class="text-secondary">'Tech Stack'</code> tab • Costs in ₹ allocated into Client Profit Margins</p>
+        </div>
+        <div class="header-actions-group flex flex-wrap items-center gap-2.5 flex-shrink-0">
+          <!-- Dual-Theme Switcher Button (#btn-theme-toggle) -->
+          <button id="btn-theme-toggle" type="button" onclick="toggleThemeMode()" class="h-10 px-3.5 rounded-xl border flex items-center gap-1.5 transition text-xs font-bold shadow-xs cursor-pointer" title="Toggle Light / Dark Theme">
+            <span id="theme-toggle-icon" class="material-symbols-outlined text-[18px]">dark_mode</span>
+            <span id="theme-toggle-label" class="hidden sm:inline">Theme</span>
+          </button>
+
+          <!-- Online Studio User Presence Pill -->
+          <button type="button" onclick="openUserIdentityModal()" class="user-presence-pill h-10 px-3.5 rounded-full btn-glass-neutral text-xs font-semibold flex items-center gap-2 flex-shrink-0" title="Active Studio Session User — Click to switch identity">
+            <span class="relative flex h-2.5 w-2.5 flex-shrink-0">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34D399] opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#34D399]"></span>
+            </span>
+            <span data-studio-user-name class="font-bold text-white tracking-wide">Guest</span>
+            <span class="text-[10px] font-label-code text-[#34D399] hidden xl:inline">ONLINE</span>
+          </button>
+          <button type="button" onclick="openActivityLedgerModal()" class="h-10 px-3.5 rounded-full btn-glass-lavender text-xs font-semibold flex items-center gap-1.5 flex-shrink-0" title="Open Studio Activity Audit Log">
+            <span class="material-symbols-outlined text-[16px]">history</span>
+            <span>Activity</span>
+            <span data-activity-log-count class="px-1.5 py-0.5 rounded-full bg-black/30 font-label-code text-[10px]">0 Events</span>
+          </button>
+          <button type="button" onclick="openCurrencyConverterModal()" class="h-10 px-4 rounded-full btn-glass-sky text-xs font-semibold flex items-center gap-1.5 flex-shrink-0">
+            <span class="material-symbols-outlined text-[16px]">currency_exchange</span>
+            <span>Currency Converter</span>
+          </button>
+          <button type="button" onclick="openWhatsAppCommandModal()" class="btn-glass-whatsapp h-10 px-4 rounded-full text-xs font-bold flex items-center gap-1.5 flex-shrink-0" title="Open Studio WhatsApp CRM Command Center">
+            <span class="material-symbols-outlined text-[17px] text-[#25D366]">chat</span>
+            <span class="text-white">WhatsApp CRM</span>
+          </button>
+          <div id="sheets-sync-status-badge" onclick="openApiSettingsModal()"></div>
+          <a href="index.html" class="h-10 px-4 rounded-full btn-glass-neutral text-xs font-semibold flex items-center gap-1.5 flex-shrink-0">
+            <span class="material-symbols-outlined text-[16px]">arrow_back</span>
+            <span>Back to Project Board</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main class="w-full pt-7 px-space-lg pb-space-xl flex-1 flex flex-col gap-space-lg">
+      <!-- Summary Strip -->
+      <section class="tech-summary-container flex flex-col gap-space-md p-space-md rounded-xl shadow-lg">
+        <div class="flex flex-wrap items-center justify-between gap-space-md">
+          <div class="flex items-center gap-space-sm">
+            <div class="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center text-secondary">
+              <span class="material-symbols-outlined text-[18px]">build_circle</span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-headline-sm text-base font-semibold text-on-surface">Active Studio Software Licenses (₹)</h3>
+                <span id="tech-stack-active-count" class="px-2 py-0.5 rounded-full bg-secondary-container/20 text-secondary font-label-code text-[11px] font-semibold">0 Active Tools</span>
+              </div>
+              <p class="text-xs text-outline">Used dynamically to calculate net profit margins in ₹ on every deal</p>
+            </div>
+          </div>
+          <div class="flex items-baseline gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest">
+            <span class="text-[10px] font-bold text-outline uppercase">Total Monthly Burn:</span>
+            <span id="tech-stack-total-burn" class="font-label-code text-sm text-secondary font-bold">₹0/mo</span>
+            <span id="tech-stack-yearly-burn" class="font-label-code text-[10px] text-outline">(₹0/yr)</span>
+          </div>
+        </div>
+        <div id="tech-stack-mini-grid" class="tech-stack-cards-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+      </section>
+
+      <!-- Full Inventory Table + Add Tool Form in INR -->
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg">
+        <div class="xl:col-span-8 rounded-xl tech-table-container overflow-hidden shadow-md">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="tech-table-head text-[10px] font-bold uppercase tracking-wider">
+                  <th class="py-space-sm px-space-md">Tool &amp; Category</th>
+                  <th class="py-space-sm px-space-md">Monthly / Optional Per-Cut Burn (₹)</th>
+                  <th class="py-space-sm px-space-md">Start / End Date &amp; Renewal Bar</th>
+                  <th class="py-space-sm px-space-md">Who Paid For This</th>
+                  <th class="py-space-sm px-space-md text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tech-stack-table-body" class="text-xs"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Add New Tool to 'Tech Stack' Sheet (Supports INR or USD auto-conversion) -->
+        <div class="xl:col-span-4 rounded-xl tech-form-container p-space-md shadow-md flex flex-col gap-space-sm">
+          <h3 class="font-headline-sm text-base font-bold text-on-surface flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-secondary text-[18px]">add_circle</span>
+            Add Software Subscription (₹)
+          </h3>
+          <form id="add-tool-form" onsubmit="handleAddToolForm(event)" class="flex flex-col gap-space-sm text-xs">
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase font-bold text-outline">Tool / Software Name *</label>
+              <input id="add-tool-name" type="text" required placeholder="e.g. Adobe Creative Cloud, ElevenLabs" class="h-10 px-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-on-surface"/>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase font-bold text-outline">Currency</label>
+                <select id="add-tool-currency" class="h-10 px-3 rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-secondary font-label-code font-bold">
+                  <option value="INR">INR (₹)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase font-bold text-outline">Monthly Cost *</label>
+                <input id="add-tool-monthly" type="number" step="any" required placeholder="e.g. 4500" class="h-10 px-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-on-surface font-label-code"/>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase font-bold text-tertiary" title="Optional: leave blank/0 now and decide while adding a client or at last in Client File">Per Client Cut (Optional — Set Now or Decide at Last)</label>
+              <input id="add-tool-per-cut" type="number" step="any" min="0" placeholder="₹0 (Optional: leave blank or set later in Client File)" class="h-10 px-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-tertiary font-label-code font-bold"/>
+            </div>
+            <p class="text-[10px] text-outline leading-relaxed -mt-1">
+              Don’t know exact per-client burn yet? Leave <strong>Per Client Cut</strong> blank (`0`) and set it later in the table or at last inside any Client File.
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase font-bold text-outline">Category</label>
+                <select id="add-tool-category" class="h-10 px-3 rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-on-surface">
+                  <option value="Editing &amp; Post-Production">Editing &amp; Post-Production (Premiere, DaVinci, FCP)</option>
+                  <option value="VFX, 3D &amp; Motion Graphics">VFX, 3D &amp; Motion Graphics (After Effects, Blender, C4D)</option>
+                  <option value="AI Video &amp; Generative Media">AI Video &amp; Generative Media (Runway, Midjourney, Kling)</option>
+                  <option value="AI Voice, Audio &amp; Music">AI Voice, Audio &amp; Music (ElevenLabs, Epidemic, Artlist)</option>
+                  <option value="Thumbnails &amp; Graphic Design">Thumbnails &amp; Graphic Design (Photoshop, Figma, Illustrator)</option>
+                  <option value="Cloud Storage &amp; File Delivery">Cloud Storage &amp; File Delivery (Google Drive, Dropbox, Frame.io)</option>
+                  <option value="Stock Footage, Assets &amp; LUTs">Stock Footage, Assets &amp; LUTs (Storyblocks, Envato, MotionArray)</option>
+                  <option value="Color Grading &amp; Finishing">Color Grading &amp; Finishing (Studio LUTs, FilmConvert, Dehancer)</option>
+                  <option value="Scriptwriting &amp; AI Research">Scriptwriting &amp; AI Research (ChatGPT, Claude, Gemini, Notion)</option>
+                  <option value="CRM, PM &amp; Communication">CRM, PM &amp; Communication (Slack, Discord, Linear, Asana)</option>
+                  <option value="Web Hosting, Domain &amp; Server">Web Hosting, Domain &amp; Server (Vercel, AWS, Cloudflare)</option>
+                  <option value="Studio Overhead &amp; Utilities">Studio Overhead &amp; Utilities (High-Speed Fiber, Electricity)</option>
+                  <option value="Other Production Tool">Other Production Tool</option>
+                </select>
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase font-bold text-secondary">Who Paid For This *</label>
+                <select id="add-tool-paid-by" class="h-10 px-3 rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-secondary font-semibold"></select>
+              </div>
+            </div>
+
+            <!-- Start Date, End Date & Live Renewal Measurement Bar -->
+            <div class="p-3 rounded-xl bg-surface-container-lowest border border-outline-variant/20 flex flex-col gap-2">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase font-bold text-outline">Start Date *</label>
+                  <input id="add-tool-start-date" type="date" required onchange="updateAddToolRenewalPreview()" class="h-9 px-3 rounded-lg bg-surface-container-low border border-outline-variant/30 text-on-surface font-label-code text-xs"/>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase font-bold text-outline">End / Renewal Date *</label>
+                  <input id="add-tool-end-date" type="date" required onchange="updateAddToolRenewalPreview()" class="h-9 px-3 rounded-lg bg-surface-container-low border border-outline-variant/30 text-on-surface font-label-code text-xs"/>
+                </div>
+              </div>
+              <div class="flex flex-col gap-1 pt-0.5">
+                <div class="flex items-center justify-between text-[10px] font-label-code">
+                  <span class="text-outline uppercase">Renewal Cycle Measurement:</span>
+                  <span id="add-tool-renewal-preview-text" class="text-tertiary font-bold">30 days left of 30 days (100%)</span>
+                </div>
+                <div class="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+                  <div id="add-tool-renewal-preview-bar" class="h-full bg-[#34D399] rounded-full transition" style="width: 100%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Auto-Renewing (Auto-Pay) Glass Toggle Switch -->
+            <label for="add-tool-auto-renew" class="auto-renew-toggle-card p-3 rounded-xl bg-surface-container-lowest border border-outline-variant/25 flex items-center justify-between gap-3 cursor-pointer transition">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-8 h-8 rounded-lg bg-[#34D399]/15 text-[#34D399] flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-[18px]">autorenew</span>
+                </div>
+                <div class="flex flex-col min-w-0">
+                  <span class="text-xs font-bold text-on-surface">Auto-Renewing (Auto-Pay)</span>
+                  <span class="text-[10px] text-outline">Displays "Auto-Renew Active" or "Manual Pay" badge on tool card</span>
+                </div>
+              </div>
+              <div class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input id="add-tool-auto-renew" type="checkbox" checked class="sr-only peer"/>
+                <div class="w-10 h-5 bg-surface-container-high rounded-full peer peer-checked:bg-[#34D399]/30 border border-white/15 peer-checked:border-[#34D399] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#94A3B8] peer-checked:after:bg-[#34D399] after:rounded-full after:h-4 after:w-4 after:transition peer-checked:after:translate-x-5"></div>
+              </div>
+            </label>
+
+            <button type="submit" class="mt-2 w-full py-3 px-5 rounded-xl btn-glass-mint font-bold flex items-center justify-center gap-2 transition shadow-md hover:shadow-[#34D399]/20">
+              <span class="material-symbols-outlined text-[16px]">cloud_upload</span>
+              <span>Add Tool in ₹ &amp; Sync to GitHub / Sheet</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js?v=20261103_v56"></script>
+</body>
+</html>

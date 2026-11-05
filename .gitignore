@@ -1,0 +1,16 @@
+.DS_Store
+Thumbs.db
+*.log
+*.py
+stitch_reference/
+
+
+
+# Private data and local-only files. Never commit these.
+crm-data.json
+.hallmark/
+*.xlsx
+.wwebjs_auth/
+.wwebjs_cache/
+node_modules/
+.env
