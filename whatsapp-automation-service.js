@@ -21,6 +21,11 @@ const path = require('path');
 const https = require('https');
 
 const PORT = process.env.PORT || 3030;
+const ALLOWED_ORIGINS = [
+  /^https:\/\/koushik018\.github\.io$/,
+  /^http:\/\/localhost(:\d+)?$/,
+  /^http:\/\/127\.0\.0\.1(:\d+)?$/
+];
 const CRM_DATA_PATH = path.join(__dirname, 'crm-data.json');
 
 // Global Automation State
@@ -29,6 +34,7 @@ const automationState = {
   status: 'ONLINE',
   startedAt: new Date().toISOString(),
   pairedNumber: '',
+  wa: { status: 'NOT_STARTED', number: '', qr: '', error: '' },
   activePartners: ['koushik', 'bharagav', 'kiran'],
   slaThresholdHours: {
     prompt: 2,
@@ -117,9 +123,20 @@ function calculateLiveSlaTelemetry() {
 // Create HTTP Server
 const server = http.createServer((req, res) => {
   // CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // Only the CRM page (or this machine) may talk to the bridge. A random website must never be able to send WhatsApp messages from your number.
+  const origin = req.headers.origin || '';
+  const allowed = !origin || ALLOWED_ORIGINS.some(rx => rx.test(origin));
+  if (origin && allowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (!allowed) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Origin not allowed' }));
+    return;
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -133,8 +150,9 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/status' && req.method === 'GET') {
     const sla = calculateLiveSlaTelemetry();
     res.writeHead(200, { 'Content-Type': 'application/json' });
+    const publicState = { ...automationState, wa: { status: automationState.wa.status, number: automationState.wa.number, error: automationState.wa.error } };
     res.end(JSON.stringify({
-      state: automationState,
+      state: publicState,
       sla,
       timestamp: new Date().toISOString()
     }));
@@ -214,6 +232,23 @@ const server = http.createServer((req, res) => {
 
         console.log(`[beRich Bridge] Outgoing dispatch to ${to}: "${text}"`);
 
+        if (!waClient || automationState.wa.status !== 'READY') {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, status: 'NOT_LINKED', error: 'WhatsApp is not linked. Open http://localhost:' + PORT + '/link and scan the QR code.' }));
+          return;
+        }
+        const digits = String(to).replace(/\D/g, '');
+        waClient.sendMessage(digits + '@c.us', text).then(() => {
+          automationState.messageLedger.unshift({ direction: 'OUTGOING', to: digits, text, timestamp });
+          if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, status: 'SENT', to: digits, timestamp }));
+        }).catch(err => {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, status: 'FAILED', error: err.message }));
+        });
+        return;
+
         automationState.messageLedger.unshift({
           direction: 'OUTGOING',
           to,
@@ -252,6 +287,21 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: err.message }));
       }
     });
+    return;
+  }
+
+  // Link page: shows the QR code to scan with the phone (WhatsApp, Linked devices). Same-machine only.
+  if (url.pathname === '/link' && req.method === 'GET') {
+    const w = automationState.wa;
+    const body = w.status === 'READY'
+      ? `<h2>WhatsApp is linked</h2><p>Number: +${w.number}</p><p>You can close this tab and use the chat windows inside the CRM.</p>`
+      : w.status === 'QR'
+        ? `<h2>Scan with WhatsApp</h2><p>Phone: WhatsApp, Settings, Linked devices, Link a device.</p><img alt="QR code" src="${w.qr}" width="280" height="280"/>`
+        : w.status === 'NOT_INSTALLED'
+          ? `<h2>One-time install needed</h2><p>Close this window and run <b>start-whatsapp-bridge.bat</b> again. It installs what is missing.</p><p>${w.error || ''}</p>`
+          : `<h2>Starting WhatsApp...</h2><p>Status: ${w.status}. This page refreshes by itself.</p><p>${w.error || ''}</p>`;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="4"><title>Link WhatsApp</title><body style="font-family:system-ui;max-width:520px;margin:40px auto;padding:0 16px">${body}</body>`);
     return;
   }
 
@@ -418,7 +468,52 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ error: 'Not Found' }));
 });
 
+
+// ---------------------------------------------------------------------------
+// Real WhatsApp link (free, unofficial, via whatsapp-web.js). One bridge = one number.
+// Each partner runs their own bridge on their own computer with their own number,
+// so chats never pass through anyone else's machine. Use a spare number: WhatsApp can
+// ban numbers that automate.
+// ---------------------------------------------------------------------------
+let waClient = null;
+function startWhatsAppClient() {
+  let Client, LocalAuth, QR;
+  try {
+    ({ Client, LocalAuth } = require('whatsapp-web.js'));
+    QR = require('qrcode');
+  } catch (e) {
+    automationState.wa = { status: 'NOT_INSTALLED', number: '', qr: '', error: 'Run: npm install whatsapp-web.js qrcode' };
+    console.log('[beRich Bridge] WhatsApp library not installed. Run: npm install whatsapp-web.js qrcode');
+    return;
+  }
+  automationState.wa.status = 'STARTING';
+  waClient = new Client({
+    authStrategy: new LocalAuth({ dataPath: path.join(__dirname, '.wwebjs_auth') }),
+    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+  });
+  waClient.on('qr', async qr => {
+    try { automationState.wa.qr = await QR.toDataURL(qr); automationState.wa.status = 'QR'; } catch (e) { automationState.wa.error = e.message; }
+    console.log('[beRich Bridge] Scan the QR code at http://localhost:' + PORT + '/link');
+  });
+  waClient.on('ready', () => {
+    const num = (waClient.info && waClient.info.wid && waClient.info.wid.user) || '';
+    automationState.wa = { status: 'READY', number: num, qr: '', error: '' };
+    automationState.pairedNumber = num;
+    console.log('[beRich Bridge] WhatsApp linked as +' + num);
+  });
+  waClient.on('auth_failure', m => { automationState.wa = { status: 'AUTH_FAILED', number: '', qr: '', error: String(m) }; });
+  waClient.on('disconnected', r => { automationState.wa = { status: 'DISCONNECTED', number: '', qr: '', error: String(r) }; });
+  waClient.on('message', msg => {
+    if (msg.fromMe || msg.isStatus || String(msg.from).includes('@g.us')) return; // ignore own, status and group messages
+    const from = String(msg.from).replace('@c.us', '');
+    automationState.messageLedger.unshift({ direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString() });
+    if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
+  });
+  waClient.initialize().catch(e => { automationState.wa = { status: 'ERROR', number: '', qr: '', error: e.message }; });
+}
+
 server.listen(PORT, () => {
+  startWhatsAppClient();
   console.log(`================================================================`);
   console.log(`[beRich] Phase 2 WhatsApp 24/7 Automation Bridge is ONLINE!`);
   console.log(`[beRich] Telemetry Dashboard: http://localhost:${PORT}`);

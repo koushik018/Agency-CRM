@@ -692,6 +692,7 @@ function saveToLocalCache() {
       activityLog: crmState.activityLog.slice(0, 250)
     }));
     saveActivityLog_();
+    if (typeof persistChats_ === 'function') persistChats_();
   } catch (e) {
     console.warn('Cache write skipped:', e);
   }
@@ -3783,6 +3784,7 @@ function logIncomingWhatsAppMessage(leadId, customText) {
     direction: 'INCOMING',
     author: lead.clientName,
     text: msgText.trim(),
+    owner: chatUser_(),
     timestamp: new Date().toISOString()
   });
 
@@ -3955,16 +3957,16 @@ function setWaTone(tone) {
   applyWhatsAppCmdTemplate(type);
 }
 
-function waCtx_() {
+function waCtx_(leadIdOverride) {
   const clientSelect = document.getElementById('wa-cmd-client-select');
-  const leadId = clientSelect ? clientSelect.value : null;
+  const leadId = leadIdOverride !== undefined ? leadIdOverride : (clientSelect ? clientSelect.value : null);
   const lead = (globalState.leads || []).find(l => l.id === leadId) || {
     clientName: 'there', service: 'your video project', partner: getActiveStudioUser(), dealValue: 0, payments: []
   };
   const payments = Array.isArray(lead.payments) ? lead.payments : [];
   const collected = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
   const quote = parseFloat(lead.dealValue) || 0;
-  const val = id => (document.getElementById(id)?.value || '').trim();
+  const val = id => leadIdOverride !== undefined ? '' : (document.getElementById(id)?.value || '').trim();
   const prefs = loadWaPrefs_();
   return {
     n: lead.clientName || 'there',
@@ -3984,8 +3986,8 @@ function waCtx_() {
   };
 }
 
-function buildWaMessage(type, tone) {
-  const c = waCtx_();
+function buildWaMessage(type, tone, leadId) {
+  const c = waCtx_(leadId);
   const link = (label, url) => url ? `\n\n${label}\n${url}` : '';
   const port = link(tone === 'genz' ? 'Our work, check it out:' : 'Our portfolio:', c.portfolio);
   const ref = link('Reference:', c.reference);
@@ -4041,7 +4043,7 @@ function renderWaThread() {
   const leadId = document.getElementById('wa-cmd-client-select')?.value;
   const lead = (globalState.leads || []).find(l => l.id === leadId);
   if (!lead) { box.innerHTML = '<span class="wa-help">Choose a client above to see and track the conversation.</span>'; return; }
-  const hist = (Array.isArray(lead.chatHistory) ? lead.chatHistory : []).slice(-5);
+  const hist = visibleChat_(lead.chatHistory).slice(-5);
   const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   box.innerHTML = hist.length ? hist.map(m => {
     const mine = m.direction === 'OUTGOING';
@@ -4178,24 +4180,8 @@ function sendWhatsAppCmdDispatch() {
   const leadId = clientSelect ? clientSelect.value : null;
   const lead = (globalState.leads || []).find(l => l.id === leadId);
 
-  if (lead) {
-    lead.lastInteractionAt = Date.now();
-    lead.lastInteractionType = 'whatsapp_cmd';
-    if (rawPhone && !lead.contactPhone) lead.contactPhone = rawPhone;
-    if (!Array.isArray(lead.chatHistory)) lead.chatHistory = [];
-    lead.chatHistory.push({ direction: 'OUTGOING', author: getActiveStudioUser(), text: waSafeText(text), timestamp: new Date().toISOString() });
-    lead.updatedAt = Date.now();
-    saveToLocalCache();
-    recordStudioActivity(
-      'Dispatched WhatsApp Message',
-      `${getActiveStudioUser()} sent WhatsApp from ${getActiveSender_().label} to "${lead.clientName}" (${text.length} characters)`,
-      false
-    );
-    scheduleChatSync_();
-  } else {
-    logWaActivity_('WhatsApp', rawPhone || 'a number not saved in the CRM', text.length);
-    scheduleChatSync_();
-  }
+  if (lead && rawPhone && !lead.contactPhone) { lead.contactPhone = rawPhone; lead.updatedAt = Date.now(); }
+  commandCenterSendNoted_(lead || null, rawPhone, text);
 
   const waUrl = cleanPhone
     ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waSafeText(text))}`
@@ -6781,6 +6767,7 @@ function injectSharedModals() {
         </div>
 
         <div class="wa-footer flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10">
+          <button type="button" onclick="openCommandChatWindow()" class="wa-chip wa-chip-accent">Open chat window</button>
           <button type="button" onclick="sendWaDraftByEmail()" class="wa-chip">Send by email</button>
           <button type="button" onclick="copyWhatsAppCmdDraft()"
             class="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 font-label-code text-xs font-semibold flex items-center gap-1.5 transition">
@@ -8344,6 +8331,7 @@ window.logIncomingWhatsAppMessage = logIncomingWhatsAppMessage;
 // Lightweight background polling for 2-Way WhatsApp Bridge updates (Every 15s)
 if (typeof window !== 'undefined') {
   setInterval(async () => {
+    return; // replaced by pollBridge_()
     try {
       const res = await fetch('http://localhost:3030/api/status', { method: 'GET', cache: 'no-store' });
       if (res.ok) {
@@ -8393,33 +8381,82 @@ if (typeof window !== 'undefined') {
 }
 
 /* ==========================================================================
-   SENDERS (send-from profiles), CHAT DOCK (floating), EMAIL-FROM, REPLY ALERTS
-   Sender profiles stay on this computer only (not synced), so partner phone numbers and
-   emails are never written to the shared GitHub file.
+   PRIVATE CHATS, SEND-FROM PROFILES, FLOATING MULTI-CHAT WINDOWS, REPLY ALERTS
+   Privacy model:
+   - Deals are shared with the team. Chat messages are NOT. They are stored only in this
+     browser (localStorage) and are removed from everything pushed to GitHub.
+   - Every message and every send-from profile is tagged with the signed-in partner. A partner
+     only sees and uses their own, even on a shared computer.
+   - Team History only records "Chat started" and "Chat ended" per conversation, not every message.
    ========================================================================== */
 const SENDERS_KEY = 'beRich_senders_v1';
+const CHAT_STORE_KEY = 'beRich_chats_v2';
+const NUM_CHAT_KEY = 'beRich_numchats_v1';
 const CHAT_SYNC_DELAY_MS = 30000;
-let chatSession = null;      // { leadId, clientName, senderLabel, startedAt, sent, received }
+const CHAT_IDLE_END_MS = 20 * 60 * 1000;
+const MAX_CHAT_WINDOWS = 4;
 let chatSyncTimer = null;
-let chatUnread = 0;
+const chatSessions = new Map();
+let chatBridge = { status: 'OFF', number: '', ready: false };
 
-function loadSenders_() {
-  try {
-    const list = JSON.parse(localStorage.getItem(SENDERS_KEY) || '[]');
-    if (Array.isArray(list) && list.length) return list;
-  } catch (e) {}
-  return [{ id: 'S-1', label: (typeof getActiveStudioUser === 'function' && getActiveStudioUser()) || 'Studio', phone: '', email: '', port: 3030 }];
+/* ---------- identity ---------- */
+function chatUser_() {
+  return (sessionStorage.getItem('FRAME3_PIN_VERIFIED_USER') || getActiveStudioUser() || '').trim();
 }
-function saveSenders_(list) {
-  try { localStorage.setItem(SENDERS_KEY, JSON.stringify(list)); } catch (e) {}
+function sameUser_(a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
+
+/* ---------- private chat store (never pushed) ---------- */
+function readJson_(key) { try { return JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { return {}; } }
+function mergeChats_(a, b) {
+  const seen = new Set(); const out = [];
+  [...(a || []), ...(b || [])].forEach(m => {
+    const k = (m.timestamp || '') + '|' + (m.direction || '') + '|' + String(m.text || '').slice(0, 40);
+    if (!seen.has(k)) { seen.add(k); out.push(m); }
+  });
+  out.sort((x, y) => new Date(x.timestamp || 0) - new Date(y.timestamp || 0));
+  return out.slice(-300);
+}
+function persistChats_() {
+  try {
+    const store = readJson_(CHAT_STORE_KEY);
+    (crmState.leads || []).forEach(l => {
+      if (Array.isArray(l.chatHistory) && l.chatHistory.length) store[l.id] = mergeChats_(store[l.id], l.chatHistory);
+    });
+    localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(store));
+  } catch (e) {}
+}
+function rehydrateChats_() {
+  const store = readJson_(CHAT_STORE_KEY);
+  (crmState.leads || []).forEach(l => { if (store[l.id]) l.chatHistory = mergeChats_(l.chatHistory, store[l.id]); });
+}
+function visibleChat_(history) {
+  const me = chatUser_();
+  return (Array.isArray(history) ? history : []).filter(m => !m.owner || sameUser_(m.owner, me));
+}
+
+/* ---------- send-from profiles (each partner sees only their own) ---------- */
+function allSenders_() {
+  try { const l = JSON.parse(localStorage.getItem(SENDERS_KEY) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; }
+}
+function loadSenders_() {
+  const me = chatUser_();
+  const mine = allSenders_().filter(s => sameUser_(s.owner, me));
+  return mine.length ? mine : [{ id: 'S-' + me, owner: me, label: me || 'Me', phone: '', email: '', port: 3030 }];
+}
+function saveSenders_(mine) {
+  const me = chatUser_();
+  const others = allSenders_().filter(s => !sameUser_(s.owner, me));
+  const stamped = mine.map((s, i) => ({ ...s, owner: me, id: 'S-' + me + '-' + (i + 1) }));
+  try { localStorage.setItem(SENDERS_KEY, JSON.stringify([...others, ...stamped])); } catch (e) {}
 }
 function getActiveSender_() {
   const list = loadSenders_();
-  const id = loadWaPrefs_().senderId;
+  const prefs = loadWaPrefs_();
+  const id = prefs['senderId_' + chatUser_()];
   return list.find(s => s.id === id) || list[0];
 }
 function setActiveSender(id) {
-  saveWaPrefs_({ senderId: id });
+  saveWaPrefs_({ ['senderId_' + chatUser_()]: id });
   renderSenderControls_();
 }
 function renderSenderControls_() {
@@ -8430,11 +8467,10 @@ function renderSenderControls_() {
   });
   document.querySelectorAll('.wa-sender-help').forEach(el => {
     el.textContent = active.phone
-      ? `Messages are logged as sent from ${active.label} (${active.phone}). Make sure WhatsApp Web on this computer is signed in to that number.`
-      : 'Add your WhatsApp number and email with Manage so every message shows who sent it and from where.';
+      ? `Sending as ${chatUser_()} from ${active.label} (${active.phone}). You only see your own numbers and chats.`
+      : `Signed in as ${chatUser_()}. Add your own WhatsApp number and email with Manage.`;
   });
 }
-
 function openSendersEditor() {
   let modal = document.getElementById('crm-senders-modal');
   if (!modal) {
@@ -8448,15 +8484,15 @@ function openSendersEditor() {
     <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-senders-modal')"></div>
     <div class="relative w-full max-w-2xl neo-modal p-6 z-10 flex flex-col gap-4 my-8">
       <div class="flex items-center justify-between">
-        <h3 class="text-xl font-bold">Send-from profiles</h3>
+        <h3 class="text-xl font-bold">Your send-from profiles (${escapeHtml(chatUser_())})</h3>
         <button type="button" class="wa-chip" onclick="closeModal('crm-senders-modal')">Close</button>
       </div>
-      <p class="wa-help">One profile per person or per number. Each partner can add their own number, their own Gmail, or a company mail. These stay on this computer and are not synced to GitHub.</p>
+      <p class="wa-help">These are yours only. Other partners cannot see or use them, and they are never synced to GitHub. Add a number or an email for each way you contact clients, such as your own Gmail or a company mail.</p>
       <div id="senders-rows" class="flex flex-col gap-3">
         ${list.map((s, i) => `
           <div class="wa-panel flex flex-col gap-2" data-sender-row="${i}">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <input class="wa-input" data-f="label" placeholder="Name (for example Kiran)" value="${escapeHtml(s.label)}"/>
+              <input class="wa-input" data-f="label" placeholder="Name for this profile" value="${escapeHtml(s.label)}"/>
               <input class="wa-input" data-f="phone" placeholder="WhatsApp number with country code" value="${escapeHtml(s.phone)}"/>
               <input class="wa-input" data-f="email" placeholder="Gmail or company email" value="${escapeHtml(s.email)}"/>
               <input class="wa-input" data-f="port" placeholder="Bridge port (default 3030)" value="${escapeHtml(String(s.port || 3030))}"/>
@@ -8465,7 +8501,7 @@ function openSendersEditor() {
           </div>`).join('')}
       </div>
       <div class="flex flex-wrap gap-2 justify-between">
-        <button type="button" class="wa-chip" onclick="addSenderRow()">Add a person</button>
+        <button type="button" class="wa-chip" onclick="addSenderRow()">Add another</button>
         <button type="button" class="wa-chip wa-chip-on" onclick="saveSendersFromEditor()">Save</button>
       </div>
     </div>`;
@@ -8475,233 +8511,397 @@ function openSendersEditor() {
 function readSenderRows_() {
   return [...document.querySelectorAll('#senders-rows [data-sender-row]')].map((row, i) => {
     const get = f => (row.querySelector(`[data-f="${f}"]`)?.value || '').trim();
-    return { id: 'S-' + (i + 1), label: get('label') || ('Person ' + (i + 1)), phone: get('phone').replace(/[^\d+]/g, ''), email: get('email'), port: parseInt(get('port'), 10) || 3030 };
+    return { label: get('label') || ('Profile ' + (i + 1)), phone: get('phone').replace(/[^\d+]/g, ''), email: get('email'), port: parseInt(get('port'), 10) || 3030 };
   });
 }
-function addSenderRow() {
-  const list = readSenderRows_(); list.push({ id: 'S-' + (list.length + 1), label: '', phone: '', email: '', port: 3030 });
-  saveSenders_(list); openSendersEditor();
-}
+function addSenderRow() { const l = readSenderRows_(); l.push({ label: '', phone: '', email: '', port: 3030 }); saveSenders_(l); openSendersEditor(); }
 function removeSenderRow(i) {
-  const list = readSenderRows_(); if (list.length <= 1) { showCRMToast('Keep at least one profile.', 'warning'); return; }
-  list.splice(i, 1); saveSenders_(list); openSendersEditor();
+  const l = readSenderRows_(); if (l.length <= 1) { showCRMToast('Keep at least one profile.', 'warning'); return; }
+  l.splice(i, 1); saveSenders_(l); openSendersEditor();
 }
-function saveSendersFromEditor() {
-  saveSenders_(readSenderRows_());
-  renderSenderControls_();
-  closeModal('crm-senders-modal');
-  showCRMToast('Send-from profiles saved on this computer.', 'check_circle');
-}
+function saveSendersFromEditor() { saveSenders_(readSenderRows_()); renderSenderControls_(); closeModal('crm-senders-modal'); showCRMToast('Saved on this computer for you only.', 'check_circle'); }
 
-/* ---------- Team History for every send, even without a saved client ---------- */
-function logWaActivity_(channel, to, textLen) {
-  const s = getActiveSender_();
-  recordStudioActivity(
-    `Sent ${channel} message`,
-    `${getActiveStudioUser()} sent ${channel} from ${s.label}${s.phone ? ' (' + s.phone + ')' : ''} to ${to}, ${textLen} characters`,
-    false
-  );
+/* ---------- threads: deal chats live on the lead (local only), number chats in a local store ---------- */
+function threadOf_(s) {
+  if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); return l ? (l.chatHistory = Array.isArray(l.chatHistory) ? l.chatHistory : []) : []; }
+  const store = readJson_(NUM_CHAT_KEY); return store[s.key] || [];
 }
-
-/* ---------- Email from a chosen account ---------- */
-function sendWaDraftByEmail() {
-  const draft = (document.getElementById('wa-cmd-draft')?.value || '').trim();
-  if (!draft) { showCRMToast('Write or pick a message first.', 'warning'); return; }
-  const leadId = document.getElementById('wa-cmd-client-select')?.value;
-  const lead = (globalState.leads || []).find(l => l.id === leadId);
-  const s = getActiveSender_();
-  const to = (lead && (lead.clientEmail || lead.email)) || '';
-  const subject = `${getFullAgencyTitle()}${lead ? ' - ' + (lead.service || 'your project') : ''}`;
-  const q = new URLSearchParams({ view: 'cm', fs: '1', to, su: subject, body: waSafeText(draft) });
-  if (s.email) q.set('authuser', s.email);
-  window.open('https://mail.google.com/mail/?' + q.toString(), '_blank', 'noopener');
-  if (lead) {
-    if (!Array.isArray(lead.chatHistory)) lead.chatHistory = [];
-    lead.chatHistory.push({ direction: 'OUTGOING', author: getActiveStudioUser(), via: 'Email from ' + (s.email || s.label), text: waSafeText(draft), timestamp: new Date().toISOString() });
-    lead.lastInteractionAt = Date.now(); lead.updatedAt = Date.now(); saveToLocalCache();
+function pushThread_(s, msg) {
+  msg.owner = chatUser_();
+  msg.timestamp = msg.timestamp || new Date().toISOString();
+  if (s.leadId) {
+    const l = (globalState.leads || []).find(x => x.id === s.leadId); if (!l) return;
+    if (!Array.isArray(l.chatHistory)) l.chatHistory = [];
+    l.chatHistory.push(msg);
+    l.lastInteractionAt = Date.now(); l.updatedAt = Date.now();
+    l.lastInteractionType = msg.direction === 'INCOMING' ? 'whatsapp_received' : 'whatsapp_sent';
+    saveToLocalCache();
+  } else {
+    const store = readJson_(NUM_CHAT_KEY); store[s.key] = mergeChats_(store[s.key], [msg]);
+    try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {}
   }
-  logWaActivity_('email', lead ? lead.clientName : (to || 'an address not saved'), draft.length);
-  scheduleChatSync_();
-  renderWaThread();
-  showCRMToast(to ? `Gmail opened as ${s.email || 'your default account'}.` : 'Gmail opened. Add the client email in their Client File to auto-fill it.', 'mail');
 }
 
-/* ---------- Reply alerts ---------- */
-function notifyIncoming_(lead, text) {
-  chatUnread += 1;
-  if (chatSession && lead && chatSession.leadId === lead.id) chatSession.received += 1;
-  updateChatFab_();
-  showCRMToast(`New reply from ${lead ? lead.clientName : 'a client'}: ${String(text || '').slice(0, 60)}`, 'chat');
-  try {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(`Reply from ${lead ? lead.clientName : 'a client'}`, { body: String(text || '').slice(0, 120) });
-    }
-  } catch (e) {}
+/* ---------- sessions: one Team History line when a chat starts, one when it ends ---------- */
+function sessionKey_(lead, phone) { return lead ? 'L:' + lead.id : 'N:' + String(phone || '').replace(/\D/g, ''); }
+function getSession_(lead, phone) {
+  const key = sessionKey_(lead, phone);
+  let s = chatSessions.get(key);
+  if (!s) {
+    const num = cleanWhatsAppPhone(phone || (lead && (lead.contactPhone || lead.phone)) || '');
+    s = { key, leadId: lead ? lead.id : '', name: lead ? lead.clientName : (num ? '+' + num : 'Unknown number'), phone: num,
+          sender: getActiveSender_().label, startedAt: Date.now(), lastAt: Date.now(), sent: 0, received: 0, unread: 0, logged: false };
+    chatSessions.set(key, s);
+  }
+  return s;
+}
+function noteChatEvent_(s, kind) {
+  s.lastAt = Date.now();
+  if (kind === 'sent') s.sent += 1;
+  if (kind === 'received') s.received += 1;
+  if (!s.logged) {
+    s.logged = true;
+    recordStudioActivity('Chat started', `${chatUser_()} started a chat with ${s.name}${s.phone ? ' (' + s.phone + ')' : ''} from ${s.sender}`, false);
+  }
   scheduleChatSync_();
+  updateChatLauncher_();
+}
+function scheduleChatSync_() {
+  clearTimeout(chatSyncTimer);
+  chatSyncTimer = setTimeout(() => { try { pushToGitHubDatabase(`${chatUser_()}: chat activity`); } catch (e) {} }, CHAT_SYNC_DELAY_MS);
+}
+function endChat_(key, opts) {
+  opts = opts || {};
+  const s = chatSessions.get(key); if (!s) return;
+  chatSessions.delete(key);
+  document.getElementById(winId_(key))?.remove();
+  if (s.logged) {
+    const mins = Math.max(1, Math.round((Date.now() - s.startedAt) / 60000));
+    recordStudioActivity(opts.auto ? 'Chat ended (idle)' : 'Chat ended',
+      `${chatUser_()} ended the chat with ${s.name}${s.phone ? ' (' + s.phone + ')' : ''} from ${s.sender}: ${s.sent} sent, ${s.received} received, ${mins} min`, false);
+    if (!opts.skipPush) { clearTimeout(chatSyncTimer); try { pushToGitHubDatabase(`${chatUser_()}: chat with ${s.name} ended`); } catch (e) {} }
+  }
+  updateChatLauncher_();
+  if (!opts.silent) showCRMToast(`Chat with ${s.name} ended and saved.`, 'check_circle');
+}
+function endAllChats() {
+  const keys = [...chatSessions.keys()];
+  if (!keys.length) { showCRMToast('No chats are open.', 'info'); return; }
+  keys.forEach(k => endChat_(k, { silent: true, skipPush: true }));
+  try { pushToGitHubDatabase(`${chatUser_()}: ended ${keys.length} chat(s)`); } catch (e) {}
+  showCRMToast(`${keys.length} chat(s) ended and saved.`, 'check_circle');
+}
+setInterval(() => {
+  const now = Date.now();
+  [...chatSessions.values()].forEach(s => { if (s.logged && now - s.lastAt > CHAT_IDLE_END_MS) endChat_(s.key, { auto: true, silent: true }); });
+}, 60000);
+
+/* ---------- reply alerts ---------- */
+function notifyIncoming_(lead, text, phone) {
+  const s = getSession_(lead || null, phone || (lead && (lead.contactPhone || lead.phone)) || '');
+  s.unread += 1;
+  noteChatEvent_(s, 'received');
+  showCRMToast(`New reply from ${s.name}: ${String(text || '').slice(0, 60)}`, 'chat');
+  try { if ('Notification' in window && Notification.permission === 'granted') new Notification(`Reply from ${s.name}`, { body: String(text || '').slice(0, 120) }); } catch (e) {}
+  renderWin_(s.key);
 }
 function enableReplyAlerts() {
   if (!('Notification' in window)) { showCRMToast('This browser does not support alerts.', 'warning'); return; }
   Notification.requestPermission().then(p => showCRMToast(p === 'granted' ? 'Reply alerts are on.' : 'Alerts are blocked in your browser settings.', p === 'granted' ? 'notifications_active' : 'warning'));
 }
 
-/* ---------- Debounced GitHub sync (one push after chatting stops, never one per message) ---------- */
-function scheduleChatSync_() {
-  clearTimeout(chatSyncTimer);
-  chatSyncTimer = setTimeout(() => { try { pushToGitHubDatabase(`${getActiveStudioUser()}: chat activity`); } catch (e) {} }, CHAT_SYNC_DELAY_MS);
+/* ---------- bridge status and incoming messages ---------- */
+function senderPort_() { return getActiveSender_().port || 3030; }
+async function pollBridge_() {
+  const port = senderPort_();
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1500);
+    const r = await fetch(`http://localhost:${port}/api/status`, { cache: 'no-store', signal: ctrl.signal });
+    const data = await r.json();
+    const wa = (data.state && data.state.wa) || {};
+    chatBridge = { status: wa.status || 'ON', number: wa.number || '', ready: wa.status === 'READY' };
+    (data.state?.messageLedger || []).filter(m => m.direction === 'INCOMING').forEach(item => ingestIncoming_(item));
+  } catch (e) { chatBridge = { status: 'OFF', number: '', ready: false }; }
+  document.querySelectorAll('.chat-bridge-chip').forEach(el => { el.textContent = bridgeText_(); el.dataset.state = chatBridge.ready ? 'ok' : 'off'; });
+  updateChatLauncher_();
+}
+function bridgeText_() {
+  if (chatBridge.ready) return `WhatsApp linked: +${chatBridge.number}. Messages send from here.`;
+  if (chatBridge.status === 'QR') return 'Bridge is on. Scan the QR code to link WhatsApp.';
+  if (chatBridge.status === 'NOT_INSTALLED') return 'Bridge is on but not installed. Run start-whatsapp-bridge.bat again.';
+  if (chatBridge.status === 'OFF') return 'Bridge is off. Messages open in WhatsApp Web and are logged here.';
+  if (chatBridge.status === 'ON') return 'An old bridge version is running. Close its window and run start-whatsapp-bridge.bat again.';
+  return `Bridge status: ${chatBridge.status}`;
+}
+const seenIncoming_ = new Set();
+function ingestIncoming_(item) {
+  const id = item.timestamp + '|' + String(item.text).slice(0, 30) + '|' + item.from;
+  if (seenIncoming_.has(id)) return; seenIncoming_.add(id);
+  const digits = String(item.from || '').replace(/\D/g, '');
+  const lead = (crmState.leads || []).find(l => { const p = String(l.contactPhone || l.phone || '').replace(/\D/g, ''); return p && (p === digits || p.slice(-10) === digits.slice(-10)); });
+  const s = getSession_(lead || null, digits);
+  const hist = threadOf_(s);
+  if (hist.some(m => m.timestamp === item.timestamp || (m.direction === 'INCOMING' && m.text === item.text))) return;
+  pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp });
+  notifyIncoming_(lead || null, item.text, digits);
+}
+setInterval(() => { if (!document.hidden) pollBridge_(); }, 6000);
+
+/* ---------- email from a chosen account ---------- */
+function mailUrl_(s, text, lead) {
+  const q = new URLSearchParams({ view: 'cm', fs: '1', to: (lead && (lead.clientEmail || lead.email)) || '', su: `${getFullAgencyTitle()}${lead ? ' - ' + (lead.service || 'your project') : ''}`, body: waSafeText(text) });
+  const em = getActiveSender_().email; if (em) q.set('authuser', em);
+  return 'https://mail.google.com/mail/?' + q.toString();
+}
+function sendWaDraftByEmail() {
+  const draft = (document.getElementById('wa-cmd-draft')?.value || '').trim();
+  if (!draft) { showCRMToast('Write or pick a message first.', 'warning'); return; }
+  const leadId = document.getElementById('wa-cmd-client-select')?.value;
+  const lead = (globalState.leads || []).find(l => l.id === leadId) || null;
+  window.open(mailUrl_(getActiveSender_(), draft, lead), '_blank', 'noopener');
+  const s = getSession_(lead, document.getElementById('wa-cmd-phone')?.value || '');
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'Email from ' + (getActiveSender_().email || getActiveSender_().label), text: waSafeText(draft) });
+  noteChatEvent_(s, 'sent');
+  renderWaThread();
+  showCRMToast('Gmail opened as ' + (getActiveSender_().email || 'your default account') + '.', 'mail');
+}
+function commandCenterSendNoted_(lead, rawPhone, text) {
+  const s = getSession_(lead || null, rawPhone);
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: getActiveSender_().label, text: waSafeText(text) });
+  noteChatEvent_(s, 'sent');
+}
+function openCommandChatWindow() {
+  const leadId = document.getElementById('wa-cmd-client-select')?.value || '';
+  const phone = document.getElementById('wa-cmd-phone')?.value || '';
+  openChatWindow(leadId, phone);
 }
 
-/* ---------- Floating chat dock ---------- */
-function ensureChatDock_() {
+/* ---------- floating chat windows ---------- */
+function winId_(key) { return 'chatwin-' + String(key).replace(/[^a-z0-9]/gi, '_'); }
+function ensureChatLayer_() {
   if (document.getElementById('crm-chat-fab')) return;
   const fab = document.createElement('div');
   fab.id = 'crm-chat-fab';
   fab.innerHTML = `
-    <button type="button" id="chat-end-mini" class="chat-fab-end hidden" onclick="endChatSession()">End chat</button>
-    <button type="button" id="chat-fab-btn" class="chat-fab-btn" onclick="toggleChatDock()" aria-label="Open chat">
-      <span class="material-symbols-outlined">forum</span><span>Chat</span><span id="chat-fab-badge" class="chat-fab-badge hidden">0</span>
+    <button type="button" class="chat-fab-btn" onclick="toggleChatLauncher()" aria-label="Chats">
+      <span class="material-symbols-outlined">forum</span><span>Chats</span><span id="chat-fab-count" class="chat-fab-badge hidden">0</span>
     </button>`;
   document.body.appendChild(fab);
-  const dock = document.createElement('div');
-  dock.id = 'crm-chat-dock';
-  dock.className = 'hidden';
-  dock.innerHTML = `
-    <div class="chat-dock-head">
-      <strong>Chat</strong>
-      <button type="button" class="wa-paste" onclick="toggleChatDock()">Hide</button>
-    </div>
+  const launcher = document.createElement('div');
+  launcher.id = 'crm-chat-launcher';
+  launcher.className = 'hidden';
+  launcher.innerHTML = `
+    <div class="chat-dock-head"><strong>Chats</strong><button type="button" class="wa-paste" onclick="toggleChatLauncher()">Hide</button></div>
     <div class="chat-dock-body">
-      <select id="chat-client" class="wa-input" onchange="chatPickClient()"></select>
-      <select id="chat-sender" class="wa-input wa-sender-select" onchange="setActiveSender(this.value)"></select>
-      <div id="chat-thread" class="wa-thread chat-thread"></div>
-      <textarea id="chat-input" class="wa-input chat-input" rows="2" placeholder="Type your message"></textarea>
+      <p class="wa-help">Open up to ${MAX_CHAT_WINDOWS} chats at once. Each opens in its own floating window.</p>
+      <select id="chat-launch-client" class="wa-input"></select>
+      <input id="chat-launch-phone" class="wa-input" placeholder="Or type a number with country code"/>
       <div class="flex flex-wrap gap-1.5">
-        <button type="button" class="wa-chip wa-chip-on" onclick="chatSend()">Open in WhatsApp and log</button>
-        <button type="button" class="wa-chip" onclick="chatLogReply()">Log client reply</button>
-        <button type="button" class="wa-chip" onclick="chatSendEmail()">Email</button>
+        <button type="button" class="wa-chip wa-chip-on" onclick="launchChatFromPanel()">Open chat</button>
+        <button type="button" class="wa-chip" onclick="launchChatFromPanel(true)">Open in new tab</button>
       </div>
+      <div id="chat-active-list" class="flex flex-col gap-1.5"></div>
       <div class="flex flex-wrap gap-1.5">
-        <button type="button" class="wa-chip wa-chip-accent" onclick="endChatSession()">End chat and save</button>
+        <button type="button" class="wa-chip wa-chip-accent" onclick="endAllChats()">End all chats</button>
         <button type="button" class="wa-chip" onclick="enableReplyAlerts()">Turn on alerts</button>
-        <button type="button" class="wa-chip" onclick="checkBridgeNow()">Check bridge</button>
-        <button type="button" class="wa-chip" onclick="window.open('http://localhost:3030','_blank','noopener')">Open bridge</button>
+        <button type="button" class="wa-chip" onclick="window.open('http://localhost:'+senderPort_()+'/link','_blank','noopener')">Link WhatsApp</button>
       </div>
-      <p id="chat-bridge" class="wa-help"></p>
+      <p class="wa-help chat-bridge-chip"></p>
       <p class="wa-help wa-sender-help"></p>
     </div>`;
-  document.body.appendChild(dock);
+  document.body.appendChild(launcher);
+  const layer = document.createElement('div'); layer.id = 'crm-chat-layer'; document.body.appendChild(layer);
 }
-function updateChatFab_() {
-  const b = document.getElementById('chat-fab-badge');
-  if (b) { b.textContent = chatUnread; b.classList.toggle('hidden', chatUnread === 0); }
-  document.getElementById('chat-end-mini')?.classList.toggle('hidden', !chatSession);
-  document.getElementById('chat-fab-btn')?.classList.toggle('chat-fab-live', !!chatSession);
-}
-function toggleChatDock() {
-  ensureChatDock_();
-  const dock = document.getElementById('crm-chat-dock');
-  const open = dock.classList.contains('hidden');
-  dock.classList.toggle('hidden', !open);
+function toggleChatLauncher() {
+  ensureChatLayer_();
+  const el = document.getElementById('crm-chat-launcher');
+  const open = el.classList.contains('hidden');
+  el.classList.toggle('hidden', !open);
   if (open) {
-    chatUnread = 0; updateChatFab_();
-    const sel = document.getElementById('chat-client');
-    sel.innerHTML = '<option value="">Choose a client</option>' + (globalState.leads || []).map(l => `<option value="${escapeHtml(l.id)}"${chatSession && chatSession.leadId === l.id ? ' selected' : ''}>${escapeHtml(l.clientName)}</option>`).join('');
-    renderSenderControls_(); renderChatThread(); checkBridgeNow();
+    const sel = document.getElementById('chat-launch-client');
+    sel.innerHTML = '<option value="">Choose a client</option>' + (globalState.leads || []).map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.clientName)}</option>`).join('');
+    renderSenderControls_(); updateChatLauncher_(); pollBridge_();
   }
 }
-function chatLead_() {
-  const id = document.getElementById('chat-client')?.value;
-  return (globalState.leads || []).find(l => l.id === id) || null;
+function launchChatFromPanel(newTab) {
+  const id = document.getElementById('chat-launch-client').value;
+  const phone = document.getElementById('chat-launch-phone').value.trim();
+  if (newTab && id) { window.open(location.pathname + '?chat=' + encodeURIComponent(id), '_blank', 'noopener'); return; }
+  openChatWindow(id, phone);
 }
-function chatPickClient() {
-  const lead = chatLead_();
-  if (lead && (!chatSession || chatSession.leadId !== lead.id)) {
-    if (chatSession) endChatSession(true);
-    chatSession = { leadId: lead.id, clientName: lead.clientName, senderLabel: getActiveSender_().label, startedAt: Date.now(), sent: 0, received: 0 };
-    updateChatFab_();
+function updateChatLauncher_() {
+  const n = chatSessions.size;
+  const unread = [...chatSessions.values()].reduce((a, s) => a + (s.unread || 0), 0);
+  const badge = document.getElementById('chat-fab-count');
+  if (badge) { badge.textContent = unread || n; badge.classList.toggle('hidden', n === 0 && !unread); badge.dataset.unread = unread ? '1' : '0'; }
+  const list = document.getElementById('chat-active-list');
+  if (list) list.innerHTML = [...chatSessions.values()].map(s => `
+    <div class="chat-active-row"><button type="button" class="chat-active-name" onclick="focusChatWindow('${s.key}')">${escapeHtml(s.name)}${s.unread ? ' (' + s.unread + ' new)' : ''}</button>
+    <button type="button" class="wa-paste" onclick="endChat_('${s.key}')">End</button></div>`).join('') || '<span class="wa-help">No chats open.</span>';
+}
+function openChatWindow(leadId, phone, opts) {
+  ensureChatLayer_();
+  const lead = (globalState.leads || []).find(l => l.id === leadId) || null;
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!lead && !digits) { showCRMToast('Choose a client or type a number.', 'warning'); return; }
+  const s = getSession_(lead, digits);
+  let win = document.getElementById(winId_(s.key));
+  if (!win) {
+    if (document.querySelectorAll('.chat-win').length >= MAX_CHAT_WINDOWS) { showCRMToast(`You can have ${MAX_CHAT_WINDOWS} chat windows open. End or close one first.`, 'warning'); return; }
+    win = document.createElement('div');
+    win.id = winId_(s.key); win.className = 'chat-win'; win.dataset.key = s.key;
+    const idx = document.querySelectorAll('.chat-win').length;
+    win.style.right = (24 + idx * 372) + 'px'; win.style.bottom = '84px';
+    const tone = loadWaPrefs_().tone || 'friendly';
+    win.innerHTML = `
+      <div class="chat-win-head" data-drag>
+        <div class="chat-win-title"><strong class="chat-win-name"></strong><span class="chat-win-sub"></span></div>
+        <div class="chat-win-btns">
+          <button type="button" class="wa-paste" title="Open in a new tab" onclick="openChatTab('${s.key}')">New tab</button>
+          <button type="button" class="wa-paste" title="Shrink" onclick="toggleMinChat('${s.key}')">Min</button>
+          <button type="button" class="wa-paste chat-end" onclick="endChat_('${s.key}')">End chat</button>
+          <button type="button" class="wa-paste" title="Hide window, chat stays open" onclick="hideChatWindow('${s.key}')">X</button>
+        </div>
+      </div>
+      <div class="chat-win-body">
+        <p class="wa-help chat-bridge-chip"></p>
+        <div class="wa-thread chat-thread"></div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <select class="wa-input" data-role="tone" onchange="saveWaPrefs_({tone:this.value})">
+            ${Object.entries(WA_TONES).map(([k, v]) => `<option value="${k}"${k === tone ? ' selected' : ''}>${v}</option>`).join('')}
+          </select>
+          <select class="wa-input" data-role="tpl" onchange="winTemplate_('${s.key}', this.value); this.value=''">
+            <option value="">Write for me...</option><option value="pitch">Introduce our studio</option><option value="welcome">Kickoff</option>
+            <option value="video_cut">Video ready</option><option value="payment_request">Payment request</option><option value="follow_up">Follow-up</option>
+          </select>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" class="wa-paste" onclick="winRefine_('${s.key}','claude')">Refine with Claude</button>
+          <button type="button" class="wa-paste" onclick="winRefine_('${s.key}','gemini')">Refine with Gemini</button>
+          <button type="button" class="wa-paste" onclick="winPasteAi_('${s.key}')">Paste AI reply</button>
+        </div>
+        <textarea class="wa-input chat-input" data-role="input" rows="3" placeholder="Type your message"></textarea>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" class="wa-chip wa-chip-on" onclick="winSend_('${s.key}')">Send</button>
+          <button type="button" class="wa-chip" onclick="winLogReply_('${s.key}')">Log client reply</button>
+          <button type="button" class="wa-chip" onclick="winEmail_('${s.key}')">Email</button>
+        </div>
+      </div>`;
+    document.getElementById('crm-chat-layer').appendChild(win);
+    makeDraggable_(win);
   }
-  renderChatThread();
+  win.classList.remove('chat-hidden', 'chat-min');
+  if (opts && opts.full) win.classList.add('chat-win-full');
+  s.unread = 0;
+  renderWin_(s.key);
+  win.querySelector('[data-role="input"]').focus();
+  document.getElementById('crm-chat-launcher')?.classList.add('hidden');
+  updateChatLauncher_();
+  pollBridge_();
 }
-function renderChatThread() {
-  const box = document.getElementById('chat-thread');
-  if (!box) return;
-  const lead = chatLead_();
-  if (!lead) { box.innerHTML = '<span class="wa-help">Choose a client to start. Nothing is sent to GitHub until you press End chat, or 30 seconds after you stop.</span>'; return; }
+function focusChatWindow(key) { const w = document.getElementById(winId_(key)); if (w) { w.classList.remove('chat-hidden', 'chat-min'); const s = chatSessions.get(key); if (s) s.unread = 0; renderWin_(key); updateChatLauncher_(); } }
+function hideChatWindow(key) { document.getElementById(winId_(key))?.classList.add('chat-hidden'); }
+function toggleMinChat(key) { document.getElementById(winId_(key))?.classList.toggle('chat-min'); }
+function openChatTab(key) { const s = chatSessions.get(key); if (s && s.leadId) window.open(location.pathname + '?chat=' + encodeURIComponent(s.leadId), '_blank', 'noopener'); else showCRMToast('New tab works for saved clients. Save this number as a deal first.', 'info'); }
+function makeDraggable_(win) {
+  const head = win.querySelector('[data-drag]'); let sx, sy, ox, oy, drag = false;
+  head.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; drag = true; const r = win.getBoundingClientRect(); sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; head.setPointerCapture(e.pointerId); });
+  head.addEventListener('pointermove', e => { if (!drag) return; win.style.left = Math.max(0, ox + e.clientX - sx) + 'px'; win.style.top = Math.max(0, oy + e.clientY - sy) + 'px'; win.style.right = 'auto'; win.style.bottom = 'auto'; });
+  head.addEventListener('pointerup', () => { drag = false; });
+}
+function renderWin_(key) {
+  const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
+  win.querySelector('.chat-win-name').textContent = s.name;
+  win.querySelector('.chat-win-sub').textContent = (s.phone ? '+' + s.phone + ' | ' : '') + 'from ' + s.sender;
+  const box = win.querySelector('.chat-thread');
   const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const hist = (Array.isArray(lead.chatHistory) ? lead.chatHistory : []).slice(-30);
+  const hist = visibleChat_(threadOf_(s)).slice(-40);
   box.innerHTML = hist.length ? hist.map(m => {
     const mine = m.direction === 'OUTGOING';
     const when = m.timestamp ? new Date(m.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(lead.clientName)} <span>${esc(when)}${m.via ? ' via ' + esc(m.via) : ''}</span></div><div>${esc(String(m.text).slice(0, 400))}</div></div>`;
-  }).join('') : '<span class="wa-help">No messages yet.</span>';
+    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span></div><div>${esc(String(m.text).slice(0, 600))}</div></div>`;
+  }).join('') : '<span class="wa-help">No messages yet. Your chat history is stored only on this computer.</span>';
   box.scrollTop = box.scrollHeight;
+  win.querySelector('.chat-bridge-chip').textContent = bridgeText_();
 }
-function chatSend() {
-  const lead = chatLead_();
-  if (!lead) { showCRMToast('Choose a client first.', 'warning'); return; }
-  const input = document.getElementById('chat-input');
+function winTemplate_(key, type) {
+  if (!type) return; const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
+  const tone = win.querySelector('[data-role="tone"]').value;
+  win.querySelector('[data-role="input"]').value = buildWaMessage(type, tone, s.leadId || '');
+}
+function winRefine_(key, which) {
+  const win = document.getElementById(winId_(key)); if (!win) return;
+  const draft = win.querySelector('[data-role="input"]').value.trim();
+  const tone = WA_TONES[win.querySelector('[data-role="tone"]').value] || '';
+  if (!draft) { showCRMToast('Write or pick a message first.', 'warning'); return; }
+  const prompt = `Rewrite this WhatsApp message from a video production studio to a client.\nTone and audience: ${tone}.\nKeep every link, amount and name exactly as written. Keep it short, warm and persuasive, with no emojis, and end with one clear next step.\nReturn only the final message.\n\nMessage:\n${draft}`;
+  (navigator.clipboard ? navigator.clipboard.writeText(prompt).catch(() => {}) : Promise.resolve()).then(() =>
+    showCRMToast(which === 'gemini' ? 'Prompt copied. Press Ctrl+V in Gemini, then copy its answer and press Paste AI reply.' : 'Claude opened with your prompt. Copy its answer, then press Paste AI reply.', 'auto_awesome'));
+  window.open(which === 'gemini' ? 'https://gemini.google.com/app' : 'https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank', 'noopener');
+}
+async function winPasteAi_(key) {
+  const win = document.getElementById(winId_(key)); if (!win) return;
+  try {
+    const text = (await navigator.clipboard.readText() || '').trim();
+    if (!text) { showCRMToast('Clipboard is empty. Copy the AI answer first.', 'warning'); return; }
+    win.querySelector('[data-role="input"]').value = waSafeText(text);
+    showCRMToast('AI answer placed in the box. Edit it, then press Send.', 'check_circle');
+  } catch (e) { showCRMToast('Clipboard blocked. Click the box and press Ctrl+V.', 'warning'); }
+}
+async function winSend_(key) {
+  const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
+  const input = win.querySelector('[data-role="input"]');
   const text = waSafeText(input.value);
   if (!text) { showCRMToast('Type a message first.', 'warning'); return; }
-  const s = getActiveSender_();
-  if (!Array.isArray(lead.chatHistory)) lead.chatHistory = [];
-  lead.chatHistory.push({ direction: 'OUTGOING', author: getActiveStudioUser(), via: s.label, text, timestamp: new Date().toISOString() });
-  lead.lastInteractionAt = Date.now(); lead.lastInteractionType = 'whatsapp_sent'; lead.updatedAt = Date.now();
-  if (chatSession) chatSession.sent += 1;
-  saveToLocalCache();
-  logWaActivity_('WhatsApp', lead.clientName, text.length);
-  scheduleChatSync_();
-  window.open(waLink_(cleanWhatsAppPhone(lead.contactPhone || lead.phone || ''), text), '_blank', 'noopener');
+  if (!s.phone) { showCRMToast('This chat has no WhatsApp number. Add the number to the client or type it in Chats.', 'warning'); return; }
+  const sender = getActiveSender_();
+  let delivered = false;
+  if (chatBridge.ready) {
+    try {
+      const r = await fetch(`http://localhost:${sender.port || 3030}/api/send-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, text, leadId: s.leadId }) });
+      const j = await r.json().catch(() => ({}));
+      delivered = r.ok && j.status === 'SENT';
+    } catch (e) {}
+  }
+  if (!delivered) window.open(waLink_(s.phone, text), '_blank', 'noopener');
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: delivered ? 'WhatsApp (linked)' : 'WhatsApp Web', text });
+  noteChatEvent_(s, 'sent');
   input.value = '';
-  renderChatThread();
-  try { renderKanban(); } catch (e) {}
+  renderWin_(key);
+  showCRMToast(delivered ? 'Sent through WhatsApp.' : 'WhatsApp opened. Press send there to deliver it.', delivered ? 'check_circle' : 'chat');
 }
-function chatLogReply() {
-  const lead = chatLead_();
-  if (!lead) { showCRMToast('Choose a client first.', 'warning'); return; }
-  const text = (document.getElementById('chat-input').value || '').trim() || prompt(`Paste the reply from ${lead.clientName}:`);
+function winLogReply_(key) {
+  const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
+  const input = win.querySelector('[data-role="input"]');
+  const text = input.value.trim() || prompt(`Paste the reply from ${s.name}:`);
   if (!text || !text.trim()) return;
-  if (!Array.isArray(lead.chatHistory)) lead.chatHistory = [];
-  lead.chatHistory.push({ direction: 'INCOMING', author: lead.clientName, text: text.trim(), timestamp: new Date().toISOString() });
-  lead.lastInteractionAt = Date.now(); lead.lastInteractionType = 'whatsapp_received'; lead.updatedAt = Date.now();
-  if (chatSession) chatSession.received += 1;
-  saveToLocalCache();
-  document.getElementById('chat-input').value = '';
-  scheduleChatSync_();
-  renderChatThread();
+  pushThread_(s, { direction: 'INCOMING', author: s.name, text: text.trim() });
+  noteChatEvent_(s, 'received'); input.value = ''; renderWin_(key);
   showCRMToast('Reply saved. The waiting timer was reset.', 'check_circle');
 }
-function chatSendEmail() {
-  const lead = chatLead_();
-  const text = (document.getElementById('chat-input').value || '').trim();
-  if (!lead || !text) { showCRMToast('Choose a client and type a message.', 'warning'); return; }
-  const s = getActiveSender_();
-  const q = new URLSearchParams({ view: 'cm', fs: '1', to: lead.clientEmail || lead.email || '', su: `${getFullAgencyTitle()} - ${lead.service || 'your project'}`, body: waSafeText(text) });
-  if (s.email) q.set('authuser', s.email);
-  window.open('https://mail.google.com/mail/?' + q.toString(), '_blank', 'noopener');
-  if (!Array.isArray(lead.chatHistory)) lead.chatHistory = [];
-  lead.chatHistory.push({ direction: 'OUTGOING', author: getActiveStudioUser(), via: 'Email from ' + (s.email || s.label), text: waSafeText(text), timestamp: new Date().toISOString() });
-  lead.updatedAt = Date.now(); if (chatSession) chatSession.sent += 1;
-  saveToLocalCache(); logWaActivity_('email', lead.clientName, text.length); scheduleChatSync_();
-  document.getElementById('chat-input').value = '';
-  renderChatThread();
+function winEmail_(key) {
+  const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
+  const input = win.querySelector('[data-role="input"]'); const text = input.value.trim();
+  if (!text) { showCRMToast('Type a message first.', 'warning'); return; }
+  const lead = (globalState.leads || []).find(l => l.id === s.leadId) || null;
+  window.open(mailUrl_(getActiveSender_(), text, lead), '_blank', 'noopener');
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'Email from ' + (getActiveSender_().email || getActiveSender_().label), text: waSafeText(text) });
+  noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
 }
-function endChatSession(silent) {
-  if (!chatSession) { if (!silent) showCRMToast('No chat is open.', 'info'); return; }
-  const s = chatSession; chatSession = null; clearTimeout(chatSyncTimer);
-  const mins = Math.max(1, Math.round((Date.now() - s.startedAt) / 60000));
-  recordStudioActivity('Chat ended', `${getActiveStudioUser()} chatted with ${s.clientName} from ${s.senderLabel}: ${s.sent} sent, ${s.received} received, ${mins} min`, false);
-  try { pushToGitHubDatabase(`${getActiveStudioUser()}: chat with ${s.clientName} ended`); } catch (e) {}
-  updateChatFab_();
-  if (!silent) showCRMToast(`Chat with ${s.clientName} saved and synced.`, 'check_circle');
-}
-function checkBridgeNow() {
-  const el = document.getElementById('chat-bridge');
-  if (!el) return;
-  const port = getActiveSender_().port || 3030;
-  el.textContent = 'Checking the bridge...';
-  const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1500);
-  fetch(`http://localhost:${port}/api/status`, { cache: 'no-store', signal: ctrl.signal })
-    .then(r => { el.textContent = r.ok ? `Bridge on port ${port} is running. It records messages, but it is not yet linked to a real WhatsApp account, so phone replies are still logged by hand.` : 'Bridge answered with an error.'; })
-    .catch(() => { el.textContent = `Bridge is off. To start it: double-click start-whatsapp-bridge.bat in the project folder, then press Check bridge. Without it, use Log client reply.`; });
-}
-document.addEventListener('DOMContentLoaded', () => { try { ensureChatDock_(); renderSenderControls_(); } catch (e) { console.warn('chat dock:', e); } });
-window.addEventListener('beforeunload', () => { try { if (chatSession) { recordStudioActivity('Chat left open', `${chatSession.clientName}: ${chatSession.sent} sent, ${chatSession.received} received`, false); } } catch (e) {} });
+
+/* ---------- keep chats out of GitHub, and keep them after a pull ---------- */
+const __origBuildPayload_ = buildGitHubDatabasePayload_;
+buildGitHubDatabasePayload_ = function () {
+  const p = __origBuildPayload_();
+  p.leads = (p.leads || []).map(l => { const c = { ...l }; c.chatCount = Array.isArray(l.chatHistory) ? l.chatHistory.length : 0; c.chatHistory = []; return c; });
+  return p;
+};
+const __origApplyPayload_ = applyGitHubDatabasePayload_;
+applyGitHubDatabasePayload_ = function (p) { persistChats_(); const r = __origApplyPayload_(p); rehydrateChats_(); return r; };
+
+document.addEventListener('DOMContentLoaded', () => {
+  try { rehydrateChats_(); ensureChatLayer_(); renderSenderControls_(); } catch (e) { console.warn('chat init:', e); }
+  const want = new URLSearchParams(location.search).get('chat');
+  if (want) setTimeout(() => { try { openChatWindow(want, '', { full: true }); } catch (e) {} }, 1800);
+});
+window.addEventListener('beforeunload', () => { try { persistChats_(); } catch (e) {} });
