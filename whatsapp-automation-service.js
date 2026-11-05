@@ -200,6 +200,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // The QR code for linking, shown inside the CRM. Only the CRM page (checked above) can read it.
+  if (url.pathname === '/api/qr' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ status: automationState.wa.status, number: automationState.wa.number, error: automationState.wa.error, qr: automationState.wa.status === 'QR' ? automationState.wa.qr : '' }));
+    return;
+  }
+
   // API 1: Live Status & Telemetry
   if (url.pathname === '/api/status' && req.method === 'GET') {
     const sla = calculateLiveSlaTelemetry();

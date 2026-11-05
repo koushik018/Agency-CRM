@@ -6748,6 +6748,8 @@ function injectSharedModals() {
         <div class="wa-footer flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10">
           <button type="button" onclick="openCommandChatWindow()" class="wa-chip wa-chip-accent">Open chat window</button>
           <button type="button" onclick="sendWaDraftByEmail()" class="wa-chip">Send by email</button>
+          <button type="button" onclick="openGmailInbox()" class="wa-chip">Open Gmail</button>
+          <button type="button" onclick="openLinkWhatsApp()" class="wa-chip">Link WhatsApp</button>
           <button type="button" onclick="copyWhatsAppCmdDraft()"
             class="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 font-label-code text-xs font-semibold flex items-center gap-1.5 transition">
             <span class="material-symbols-outlined text-[15px]">content_copy</span>
@@ -8715,7 +8717,8 @@ function ensureChatLayer_() {
       <div class="flex flex-wrap gap-1.5">
         <button type="button" class="wa-chip wa-chip-accent" onclick="endAllChats()">End all chats</button>
         <button type="button" class="wa-chip" onclick="enableReplyAlerts()">Turn on alerts</button>
-        <button type="button" class="wa-chip" onclick="window.open('http://localhost:'+senderPort_()+'/link','_blank','noopener')">Link WhatsApp</button>
+        <button type="button" class="wa-chip" onclick="openLinkWhatsApp()">Link WhatsApp</button>
+        <button type="button" class="wa-chip" onclick="openGmailInbox()">Open Gmail</button>
         <button type="button" class="wa-chip" onclick="exportMyChats()">Back up my chats</button>
       </div>
       <p class="wa-help chat-bridge-chip"></p>
@@ -8804,6 +8807,7 @@ function openChatWindow(leadId, phone, opts) {
           <button type="button" class="wa-chip" onclick="winDraft_('${s.key}')" title="Types this message into the original WhatsApp window. You press Enter there.">Put in WhatsApp</button>
           <button type="button" class="wa-chip" onclick="winLogReply_('${s.key}')">Log client reply</button>
           <button type="button" class="wa-chip" onclick="winEmail_('${s.key}')">Email</button>
+          <button type="button" class="wa-chip" onclick="openGmailInbox()">Open Gmail</button>
           <button type="button" class="wa-chip wa-chip-accent chat-save-client hidden" onclick="saveChatAsClient_('${s.key}')">Save as client</button>
         </div>
       </div>`;
@@ -8885,7 +8889,7 @@ async function winDraft_(key) {
   const text = waSafeText(input.value);
   if (!text) { showCRMToast('Type or pick a message first.', 'warning'); return; }
   if (!s.phone) { showCRMToast('This chat has no WhatsApp number.', 'warning'); return; }
-  if (!chatBridge.ready) { showCRMToast('Link WhatsApp first: run start-whatsapp-bridge.bat and scan the QR code.', 'warning'); return; }
+  if (!chatBridge.ready) { showCRMToast('Link WhatsApp first. Opening the link window.', 'warning'); openLinkWhatsApp(); return; }
   const ok = await putInWhatsAppWindow_(s.phone, text);
   if (ok) { s.drafted = text; noteChatEvent_(s, 'drafted'); showCRMToast('Placed in the WhatsApp window. Check it and press Enter there.', 'chat'); }
   else showCRMToast('Could not reach the WhatsApp window. Check the bridge window.', 'warning');
@@ -8970,6 +8974,64 @@ function exportMyChats() {
   a.download = `beRich-chats-${me || 'me'}-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   showCRMToast('Chat backup saved to your Downloads folder. Keep it private.', 'download');
+}
+
+
+/* ---------- link WhatsApp from inside the CRM, and open Gmail ---------- */
+let linkPollTimer = null;
+function openLinkWhatsApp() {
+  let modal = document.getElementById('crm-wa-link-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'crm-wa-link-modal';
+    modal.className = 'fixed inset-0 z-[60] hidden items-center justify-center p-4 overflow-y-auto';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div class="fixed inset-0 bg-black/70" onclick="closeLinkWhatsApp()"></div>
+    <div class="relative w-full max-w-lg neo-modal p-6 z-10 flex flex-col gap-4 my-8">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xl font-bold">Link WhatsApp</h3>
+        <button type="button" class="wa-chip" onclick="closeLinkWhatsApp()">Close</button>
+      </div>
+      <div id="wa-link-body" class="flex flex-col gap-3 items-start"><p class="wa-help">Checking the bridge...</p></div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="wa-chip" onclick="window.open('https://web.whatsapp.com','_blank','noopener')">Open WhatsApp Web</button>
+        <button type="button" class="wa-chip" onclick="openGmailInbox()">Open Gmail</button>
+      </div>
+      <p class="wa-help">Use a spare or business number. You can unlink any time on the phone: WhatsApp, Linked devices, then log out.</p>
+    </div>`;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+  refreshLinkWhatsApp_();
+  clearInterval(linkPollTimer);
+  linkPollTimer = setInterval(refreshLinkWhatsApp_, 3000);
+}
+function closeLinkWhatsApp() { clearInterval(linkPollTimer); closeModal('crm-wa-link-modal'); }
+async function refreshLinkWhatsApp_() {
+  const body = document.getElementById('wa-link-body'); if (!body) { clearInterval(linkPollTimer); return; }
+  const port = getActiveSender_().port || 3030;
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 2000);
+    const r = await fetch(`http://localhost:${port}/api/qr`, { cache: 'no-store', signal: ctrl.signal });
+    if (!r.ok) throw new Error('old bridge');
+    const d = await r.json();
+    if (d.status === 'READY') {
+      body.innerHTML = `<p class="text-lg font-bold" style="color:var(--uv-ok)">WhatsApp is linked: +${escapeHtml(d.number)}</p><p class="wa-help">The original WhatsApp window is open on this computer. Use Chats in the CRM to put messages into it.</p>`;
+      clearInterval(linkPollTimer);
+    } else if (d.status === 'QR' && d.qr) {
+      body.innerHTML = `<p class="wa-help">On your phone: WhatsApp, Settings, Linked devices, Link a device. Then scan this code.</p><img alt="WhatsApp QR code" src="${d.qr}" width="280" height="280" style="background:#fff;padding:8px;border-radius:12px"/><p class="wa-help">The code refreshes by itself.</p>`;
+    } else if (d.status === 'NOT_INSTALLED') {
+      body.innerHTML = '<p class="wa-help">One-time install needed. Close the bridge window and run start-whatsapp-bridge.bat again.</p>';
+    } else {
+      body.innerHTML = `<p class="wa-help">Starting WhatsApp (${escapeHtml(d.status || 'please wait')}). This can take up to a minute.${d.error ? ' ' + escapeHtml(d.error) : ''}</p>`;
+    }
+  } catch (e) {
+    body.innerHTML = `<p class="wa-help">The bridge is not running on this computer. Double-click <b>start-whatsapp-bridge.bat</b> in the project folder, wait for its window, then this page shows the QR code. If it still fails, close the black bridge window and run the file again; it closes the old copy for you.</p>`;
+  }
+}
+function openGmailInbox() {
+  const em = getActiveSender_().email;
+  window.open(em ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(em)}` : 'https://mail.google.com/', '_blank', 'noopener');
 }
 
 /* ---------- keep chats out of GitHub, and keep them after a pull ---------- */
