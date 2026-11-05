@@ -21,6 +21,11 @@ const path = require('path');
 const https = require('https');
 
 const PORT = process.env.PORT || 3030;
+// Privacy: the bridge keeps ONLY messages from numbers the CRM has told it to track (saved clients and chats you opened).
+// Everything else on this phone (family, friends, groups) is dropped the moment it arrives and is never stored or shown.
+let trackedNumbers = new Set();
+const last10 = n => String(n || '').replace(/\D/g, '').slice(-10);
+const isTracked = n => last10(n).length >= 7 && trackedNumbers.has(last10(n));
 const ALLOWED_ORIGINS = [
   /^https:\/\/koushik018\.github\.io$/,
   /^http:\/\/localhost(:\d+)?$/,
@@ -146,6 +151,25 @@ const server = http.createServer((req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  // CRM tells the bridge which numbers it may keep. Default is none.
+  if (url.pathname === '/api/track' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      try {
+        const nums = (JSON.parse(body || '{}').numbers || []).map(last10).filter(x => x.length >= 7);
+        trackedNumbers = new Set(nums);
+        automationState.messageLedger = automationState.messageLedger.filter(m => m.direction !== 'INCOMING' || isTracked(m.from));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, tracking: trackedNumbers.size }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   // API 1: Live Status & Telemetry
   if (url.pathname === '/api/status' && req.method === 'GET') {
     const sla = calculateLiveSlaTelemetry();
@@ -167,6 +191,7 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body || '{}');
         const from = payload.from || payload.phone || 'Unknown';
+        if (!isTracked(from)) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: true, ignored: true })); return; }
         const text = payload.text || payload.message || '';
         const timestamp = new Date().toISOString();
 
@@ -477,6 +502,7 @@ const server = http.createServer((req, res) => {
 // ---------------------------------------------------------------------------
 let waClient = null;
 function startWhatsAppClient() {
+  if (process.env.NO_WA) { automationState.wa.status = 'DISABLED_FOR_TEST'; return; }
   let Client, LocalAuth, QR;
   try {
     ({ Client, LocalAuth } = require('whatsapp-web.js'));
@@ -489,6 +515,8 @@ function startWhatsAppClient() {
   automationState.wa.status = 'STARTING';
   waClient = new Client({
     authStrategy: new LocalAuth({ dataPath: path.join(__dirname, '.wwebjs_auth') }),
+    deviceName: 'beRich CRM (' + (process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Mac' : 'Linux') + ')',
+    browserName: 'Chrome',
     puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
   });
   waClient.on('qr', async qr => {
@@ -503,9 +531,12 @@ function startWhatsAppClient() {
   });
   waClient.on('auth_failure', m => { automationState.wa = { status: 'AUTH_FAILED', number: '', qr: '', error: String(m) }; });
   waClient.on('disconnected', r => { automationState.wa = { status: 'DISCONNECTED', number: '', qr: '', error: String(r) }; });
-  waClient.on('message', msg => {
+  waClient.on('message', async msg => {
     if (msg.fromMe || msg.isStatus || String(msg.from).includes('@g.us')) return; // ignore own, status and group messages
-    const from = String(msg.from).replace('@c.us', '');
+    // WhatsApp sometimes gives a long internal id (ending @lid) instead of the phone number. Ask for the real number.
+    let from = String(msg.from).replace(/@.*/, '');
+    try { const c = await msg.getContact(); if (c && c.number) from = String(c.number).replace(/\D/g, ''); } catch (e) {}
+    if (!isTracked(from)) return; // not a CRM contact: discard immediately
     automationState.messageLedger.unshift({ direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString() });
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
   });
