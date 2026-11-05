@@ -512,6 +512,15 @@ function startWhatsAppClient() {
   waClient.initialize().catch(e => { automationState.wa = { status: 'ERROR', number: '', qr: '', error: e.message }; });
 }
 
+server.on('error', err => {
+  if (err.code === 'EADDRINUSE') {
+    console.error('[beRich Bridge] Port ' + PORT + ' is already in use. An older bridge is still running.');
+    console.error('Close its window (or run start-whatsapp-bridge.bat, which closes it for you) and try again.');
+    process.exit(1);
+  }
+  throw err;
+});
+
 server.listen(PORT, () => {
   startWhatsAppClient();
   console.log(`================================================================`);

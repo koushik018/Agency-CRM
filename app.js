@@ -6633,28 +6633,7 @@ function injectSharedModals() {
         </div>
 
                 <!-- PHASE 2: 24/7 AUTOMATION & LIVE HEADLESS BRIDGE -->
-        <div class="p-3.5 rounded-xl bg-white/[0.03] border border-emerald-500/20 flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-[#34D399] animate-pulse"></span>
-              <span class="text-[11px] font-bold text-white uppercase tracking-wider">Phase 2: 24/7 Live Automation Bridge</span>
-            </div>
-            <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-[#34D399] font-label-code text-[10px] font-bold">Local Bridge Ready</span>
-          </div>
-          <p class="text-[11px] text-[#94A3B8] leading-relaxed">
-            Run <code class="px-1.5 py-0.5 rounded bg-black/40 text-emerald-300 font-mono">node whatsapp-automation-service.js</code> to enable 24/7 automated incoming message sync, 2-way client history, and zero-touch SLA response tracking.
-          </p>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-            <div class="p-2 rounded-lg bg-black/30 border border-white/5 flex items-center justify-between">
-              <span class="text-slate-300">Auto Follow-up Drip:</span>
-              <span class="text-amber-300 font-semibold font-label-code">48h SLA Reminder</span>
-            </div>
-            <div class="p-2 rounded-lg bg-black/30 border border-white/5 flex items-center justify-between">
-              <span class="text-slate-300">Multi-Partner Routing:</span>
-              <span class="text-sky-300 font-semibold font-label-code">koushik / bharagav / kiran</span>
-            </div>
-          </div>
-        </div>
+        <p class="wa-help chat-bridge-chip"></p>
 
         <!-- Video Cut & Heavy Cloud Drive Links Panel -->
         <div class="p-3 rounded-xl bg-black/30 border border-indigo-500/20 flex flex-col gap-2">
@@ -6679,28 +6658,28 @@ function injectSharedModals() {
         </div>
 
         <!-- Send from -->
-        <div class="wa-panel flex flex-col gap-2">
-          <div class="wa-panel-title">Send from</div>
+        <details class="wa-panel wa-collapsible">
+          <summary class="wa-panel-title">Send from</summary>
           <div class="wa-field-row">
             <select id="wa-cmd-sender" class="wa-input wa-sender-select" onchange="setActiveSender(this.value)"></select>
             <button type="button" class="wa-paste" onclick="openSendersEditor()">Manage</button>
           </div>
           <p class="wa-help wa-sender-help"></p>
-        </div>
+        </details>
 
         <!-- Conversation tracking -->
-        <div class="wa-panel flex flex-col gap-2">
-          <div class="wa-panel-title">Conversation with this client</div>
+        <details class="wa-panel wa-collapsible" open>
+          <summary class="wa-panel-title">Conversation with this client</summary>
           <div id="wa-cmd-thread" class="wa-thread"></div>
           <div class="flex flex-wrap gap-1.5 items-center">
             <button type="button" onclick="logWaReplyFromModal()" class="wa-chip wa-chip-accent">Log a reply I received</button>
             <span id="wa-bridge-status" class="wa-help"></span>
           </div>
-        </div>
+        </details>
 
         <!-- Links: portfolio, reference, with paste buttons -->
-        <div class="wa-panel flex flex-col gap-2">
-          <div class="wa-panel-title">Add links to the message</div>
+        <details class="wa-panel wa-collapsible">
+          <summary class="wa-panel-title">Add links to the message</summary>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div class="wa-field-row">
               <input id="wa-cmd-portfolio-url" type="url" placeholder="Your portfolio link" onchange="savePortfolioLink()" class="wa-input"/>
@@ -6717,7 +6696,7 @@ function injectSharedModals() {
               <button type="button" class="wa-paste" onclick="pasteIntoField('wa-cmd-preview-url'); setTimeout(()=>applyWhatsAppCmdTemplate(loadWaPrefs_().lastType||'welcome'),150)">Paste preview link</button>
             </div>
           </div>
-        </div>
+        </details>
 
         <!-- Who are you writing to? -->
         <div class="flex flex-col gap-1.5">
@@ -6744,8 +6723,8 @@ function injectSharedModals() {
         </div>
 
         <!-- Refine with Claude or Gemini -->
-        <div class="wa-panel flex flex-col gap-2">
-          <div class="wa-panel-title">Make it better with AI</div>
+        <details class="wa-panel wa-collapsible">
+          <summary class="wa-panel-title">Make it better with AI</summary>
           <p class="wa-help">Pick a tone above. Then send your message to Claude or Gemini to polish it. The prompt is copied for you. When the AI replies, copy its answer and press Paste AI reply.</p>
           <div class="flex flex-wrap gap-1.5">
             <button type="button" onclick="refineWithAi('claude')" class="wa-chip">Refine with Claude</button>
@@ -6753,7 +6732,7 @@ function injectSharedModals() {
             <button type="button" onclick="pasteAiReply()" class="wa-chip wa-chip-accent">Paste AI reply</button>
           </div>
           <p id="wa-ai-hint" class="wa-hint hidden"></p>
-        </div>
+        </details>
 
         <!-- Editable Message Area -->
         <div class="flex flex-col gap-1">
@@ -8626,12 +8605,12 @@ async function pollBridge_() {
   updateChatLauncher_();
 }
 function bridgeText_() {
-  if (chatBridge.ready) return `WhatsApp linked: +${chatBridge.number}. Messages send from here.`;
-  if (chatBridge.status === 'QR') return 'Bridge is on. Scan the QR code to link WhatsApp.';
-  if (chatBridge.status === 'NOT_INSTALLED') return 'Bridge is on but not installed. Run start-whatsapp-bridge.bat again.';
-  if (chatBridge.status === 'OFF') return 'Bridge is off. Messages open in WhatsApp Web and are logged here.';
-  if (chatBridge.status === 'ON') return 'An old bridge version is running. Close its window and run start-whatsapp-bridge.bat again.';
-  return `Bridge status: ${chatBridge.status}`;
+  if (chatBridge.ready) return `WhatsApp linked (+${chatBridge.number}). Messages send from here.`;
+  if (chatBridge.status === 'QR') return 'Scan the QR code on the Link page to finish linking.';
+  if (chatBridge.status === 'NOT_INSTALLED') return 'Bridge needs a one-time install. Run start-whatsapp-bridge.bat.';
+  if (chatBridge.status === 'OFF') return 'Bridge is off. Send opens WhatsApp Web and saves the message here.';
+  if (chatBridge.status === 'ON') return 'Old bridge is running. Run start-whatsapp-bridge.bat again to update it.';
+  return `Bridge: ${chatBridge.status}`;
 }
 const seenIncoming_ = new Set();
 function ingestIncoming_(item) {
@@ -8693,7 +8672,7 @@ function ensureChatLayer_() {
   launcher.innerHTML = `
     <div class="chat-dock-head"><strong>Chats</strong><button type="button" class="wa-paste" onclick="toggleChatLauncher()">Hide</button></div>
     <div class="chat-dock-body">
-      <p class="wa-help">Open up to ${MAX_CHAT_WINDOWS} chats at once. Each opens in its own floating window.</p>
+      <p class="wa-help">Up to ${MAX_CHAT_WINDOWS} chats at once, each in its own window.</p>
       <select id="chat-launch-client" class="wa-input"></select>
       <input id="chat-launch-phone" class="wa-input" placeholder="Or type a number with country code"/>
       <div class="flex flex-wrap gap-1.5">
@@ -8705,6 +8684,7 @@ function ensureChatLayer_() {
         <button type="button" class="wa-chip wa-chip-accent" onclick="endAllChats()">End all chats</button>
         <button type="button" class="wa-chip" onclick="enableReplyAlerts()">Turn on alerts</button>
         <button type="button" class="wa-chip" onclick="window.open('http://localhost:'+senderPort_()+'/link','_blank','noopener')">Link WhatsApp</button>
+        <button type="button" class="wa-chip" onclick="exportMyChats()">Back up my chats</button>
       </div>
       <p class="wa-help chat-bridge-chip"></p>
       <p class="wa-help wa-sender-help"></p>
@@ -8766,25 +8746,31 @@ function openChatWindow(leadId, phone, opts) {
       <div class="chat-win-body">
         <p class="wa-help chat-bridge-chip"></p>
         <div class="wa-thread chat-thread"></div>
+        <details class="chat-more">
+          <summary>Writing helper, AI and email</summary>
+          <div class="chat-more-body">
         <div class="grid grid-cols-2 gap-1.5">
-          <select class="wa-input" data-role="tone" onchange="saveWaPrefs_({tone:this.value})">
-            ${Object.entries(WA_TONES).map(([k, v]) => `<option value="${k}"${k === tone ? ' selected' : ''}>${v}</option>`).join('')}
-          </select>
-          <select class="wa-input" data-role="tpl" onchange="winTemplate_('${s.key}', this.value); this.value=''">
-            <option value="">Write for me...</option><option value="pitch">Introduce our studio</option><option value="welcome">Kickoff</option>
-            <option value="video_cut">Video ready</option><option value="payment_request">Payment request</option><option value="follow_up">Follow-up</option>
-          </select>
-        </div>
-        <div class="flex flex-wrap gap-1.5">
-          <button type="button" class="wa-paste" onclick="winRefine_('${s.key}','claude')">Refine with Claude</button>
-          <button type="button" class="wa-paste" onclick="winRefine_('${s.key}','gemini')">Refine with Gemini</button>
-          <button type="button" class="wa-paste" onclick="winPasteAi_('${s.key}')">Paste AI reply</button>
-        </div>
+              <select class="wa-input" data-role="tone" onchange="saveWaPrefs_({tone:this.value})">
+                ${Object.entries(WA_TONES).map(([k, v]) => `<option value="${k}"${k === tone ? ' selected' : ''}>${v}</option>`).join('')}
+              </select>
+              <select class="wa-input" data-role="tpl" onchange="winTemplate_('${s.key}', this.value); this.value=''">
+                <option value="">Write for me...</option><option value="pitch">Introduce our studio</option><option value="welcome">Kickoff</option>
+                <option value="video_cut">Video ready</option><option value="payment_request">Payment request</option><option value="follow_up">Follow-up</option>
+              </select>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <button type="button" class="wa-paste" onclick="winRefine_('${s.key}','claude')">Refine with Claude</button>
+              <button type="button" class="wa-paste" onclick="winRefine_('${s.key}','gemini')">Refine with Gemini</button>
+              <button type="button" class="wa-paste" onclick="winPasteAi_('${s.key}')">Paste AI reply</button>
+            </div>
+          </div>
+        </details>
         <textarea class="wa-input chat-input" data-role="input" rows="3" placeholder="Type your message"></textarea>
         <div class="flex flex-wrap gap-1.5">
           <button type="button" class="wa-chip wa-chip-on" onclick="winSend_('${s.key}')">Send</button>
           <button type="button" class="wa-chip" onclick="winLogReply_('${s.key}')">Log client reply</button>
           <button type="button" class="wa-chip" onclick="winEmail_('${s.key}')">Email</button>
+          <button type="button" class="wa-chip wa-chip-accent chat-save-client hidden" onclick="saveChatAsClient_('${s.key}')">Save as client</button>
         </div>
       </div>`;
     document.getElementById('crm-chat-layer').appendChild(win);
@@ -8823,6 +8809,7 @@ function renderWin_(key) {
   }).join('') : '<span class="wa-help">No messages yet. Your chat history is stored only on this computer.</span>';
   box.scrollTop = box.scrollHeight;
   win.querySelector('.chat-bridge-chip').textContent = bridgeText_();
+  win.querySelector('.chat-save-client')?.classList.toggle('hidden', !!s.leadId);
 }
 function winTemplate_(key, type) {
   if (!type) return; const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
@@ -8887,6 +8874,45 @@ function winEmail_(key) {
   window.open(mailUrl_(getActiveSender_(), text, lead), '_blank', 'noopener');
   pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'Email from ' + (getActiveSender_().email || getActiveSender_().label), text: waSafeText(text) });
   noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
+}
+
+
+/* ---------- turn a prospect (number only) into a saved client ---------- */
+function saveChatAsClient_(key) {
+  const s = chatSessions.get(key); if (!s || s.leadId) return;
+  const name = (prompt('Client or brand name for ' + (s.phone ? '+' + s.phone : 'this number') + ':') || '').trim();
+  if (!name) return;
+  const service = (prompt('What do they need? (for example Reel editing)', 'Creative Video Project') || 'Creative Video Project').trim();
+  const partners = (typeof getActivePartners === 'function' ? getActivePartners() : []) || [];
+  const mine = partners.find(p => sameUser_(p.name, chatUser_())) || partners[0];
+  const lead = normalizeLead_({
+    id: 'LEAD-' + Date.now(), clientName: name, contactPhone: s.phone, service, stage: 'Identified', source: 'WhatsApp',
+    country: 'India', dealValue: 0, partner: mine ? mine.name : chatUser_(), payments: [],
+    lastInteractionAt: Date.now(), lastInteractionType: 'whatsapp_sent', updatedAt: Date.now(), createdAt: Date.now()
+  });
+  lead.chatHistory = threadOf_(s).slice();
+  globalState.leads.unshift(lead);
+  const store = readJson_(NUM_CHAT_KEY); delete store[s.key]; try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {}
+  saveToLocalCache();
+  recordStudioActivity('Added Client Deal', `${chatUser_()} saved ${name} (+${s.phone}) as a new lead from a WhatsApp chat`, false);
+  try { pushToGitHubDatabase(`${chatUser_()}: saved ${name} as a lead`); } catch (e) {}
+  endChat_(key, { silent: true, skipPush: true });
+  try { renderKanban(); renderHeaderAndMetrics(); } catch (e) {}
+  openChatWindow(lead.id, '');
+  showCRMToast(`${name} is now a client in the Project Board (Identified).`, 'person_add');
+}
+
+/* ---------- back up this partner's chats to a file ---------- */
+function exportMyChats() {
+  const me = chatUser_();
+  const out = { exportedBy: me, exportedAt: new Date().toISOString(), deals: [], numbers: [] };
+  (crmState.leads || []).forEach(l => { const m = visibleChat_(l.chatHistory); if (m.length) out.deals.push({ client: l.clientName, phone: l.contactPhone || l.phone || '', messages: m }); });
+  const nums = readJson_(NUM_CHAT_KEY); Object.keys(nums).forEach(k => { const m = visibleChat_(nums[k]); if (m.length) out.numbers.push({ number: k.replace('N:', ''), messages: m }); });
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `beRich-chats-${me || 'me'}-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  showCRMToast('Chat backup saved to your Downloads folder. Keep it private.', 'download');
 }
 
 /* ---------- keep chats out of GitHub, and keep them after a pull ---------- */

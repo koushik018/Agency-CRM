@@ -2028,3 +2028,14 @@ h1, h2, h3, h4, .font-headline-lg, .font-headline-md, .font-headline-sm, .font-d
 .chat-win .chat-thread { max-height: 260px; min-height: 120px; overflow-y: auto; }
 .chat-win select.wa-input { width: 100%; height: 36px; font-size: 13px; padding: 0 10px; }
 .chat-bridge-chip[data-state="ok"] { color: var(--uv-ok); font-weight: 600; }
+
+/* v59: tidier chat UI: collapsible extras */
+details.wa-collapsible > summary, .chat-more > summary { cursor: pointer; list-style: none; font-size: 15px; font-weight: 700; color: var(--uv-ink); padding: 2px 0; display: flex; align-items: center; justify-content: space-between; }
+details.wa-collapsible > summary::-webkit-details-marker, .chat-more > summary::-webkit-details-marker { display: none; }
+details.wa-collapsible > summary::after, .chat-more > summary::after { content: "+"; font-size: 20px; line-height: 1; color: var(--uv-accent-text); }
+details[open].wa-collapsible > summary::after, .chat-more[open] > summary::after { content: "\2212"; }
+details.wa-collapsible[open] > summary { margin-bottom: 8px; }
+.chat-more { border: 1px solid var(--uv-rule); border-radius: 14px; padding: 8px 12px; background: var(--uv-panel-2); }
+.chat-more > summary { font-size: 14px; }
+.chat-more-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.chat-win .chat-thread { max-height: 300px; }

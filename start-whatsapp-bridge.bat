@@ -6,6 +6,9 @@ echo ================================================================
 echo   beRich Creative Studio - WhatsApp Bridge (runs on THIS computer)
 echo ================================================================
 echo.
+echo Closing any older bridge that is still running...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3030" ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+timeout /t 1 /nobreak >nul
 if not exist node_modules\whatsapp-web.js (
   echo First run: installing what is needed. This can take a few minutes.
   call npm install
