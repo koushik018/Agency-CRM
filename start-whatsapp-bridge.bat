@@ -8,6 +8,7 @@ echo ================================================================
 echo.
 echo Closing any older bridge that is still running...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3030" ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*wwebjs_auth*' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>&1
 timeout /t 1 /nobreak >nul
 if not exist node_modules\whatsapp-web.js (
   echo First run: installing what is needed. This can take a few minutes.
@@ -18,6 +19,7 @@ echo Starting the bridge. A page opens to link WhatsApp with your phone.
 echo Keep this window open while you chat from the CRM.
 echo.
 timeout /t 2 /nobreak >nul
+set WA_SHOW=1
 start http://localhost:3030/link
 node whatsapp-automation-service.js
 pause

@@ -151,6 +151,36 @@ const server = http.createServer((req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  // Put text into the message box of the real WhatsApp window and open that chat. Nothing is sent: the person presses Enter.
+  if (url.pathname === '/api/draft' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', async () => {
+      const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      try {
+        const payload = JSON.parse(body || '{}');
+        const digits = String(payload.to || '').replace(/\D/g, '');
+        const text = String(payload.text || '');
+        if (!digits || !text) return send(400, { error: 'Missing "to" or "text"' });
+        if (!waClient || automationState.wa.status !== 'READY') return send(503, { status: 'NOT_LINKED', error: 'WhatsApp is not linked.' });
+        await waClient.interface.openChatWindow(digits + '@c.us');
+        await waClient.pupPage.bringToFront().catch(() => {});
+        await new Promise(r => setTimeout(r, 700));
+        await waClient.pupPage.evaluate(t => {
+          const box = document.querySelector('footer div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"][data-tab="10"]');
+          if (!box) throw new Error('Message box not found');
+          box.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, t);
+        }, text);
+        return send(200, { success: true, status: 'DRAFTED' });
+      } catch (e) {
+        return send(502, { success: false, status: 'FAILED', error: e.message });
+      }
+    });
+    return;
+  }
+
   // CRM tells the bridge which numbers it may keep. Default is none.
   if (url.pathname === '/api/track' && req.method === 'POST') {
     let body = '';
@@ -501,6 +531,7 @@ const server = http.createServer((req, res) => {
 // ban numbers that automate.
 // ---------------------------------------------------------------------------
 let waClient = null;
+let waRetries = 0;
 function startWhatsAppClient() {
   if (process.env.NO_WA) { automationState.wa.status = 'DISABLED_FOR_TEST'; return; }
   let Client, LocalAuth, QR;
@@ -517,7 +548,7 @@ function startWhatsAppClient() {
     authStrategy: new LocalAuth({ dataPath: path.join(__dirname, '.wwebjs_auth') }),
     deviceName: 'beRich CRM (' + (process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Mac' : 'Linux') + ')',
     browserName: 'Chrome',
-    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+    puppeteer: { headless: !process.env.WA_SHOW, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800'] }
   });
   waClient.on('qr', async qr => {
     try { automationState.wa.qr = await QR.toDataURL(qr); automationState.wa.status = 'QR'; } catch (e) { automationState.wa.error = e.message; }
@@ -525,12 +556,21 @@ function startWhatsAppClient() {
   });
   waClient.on('ready', () => {
     const num = (waClient.info && waClient.info.wid && waClient.info.wid.user) || '';
+    waRetries = 0;
     automationState.wa = { status: 'READY', number: num, qr: '', error: '' };
     automationState.pairedNumber = num;
     console.log('[beRich Bridge] WhatsApp linked as +' + num);
   });
   waClient.on('auth_failure', m => { automationState.wa = { status: 'AUTH_FAILED', number: '', qr: '', error: String(m) }; });
   waClient.on('disconnected', r => { automationState.wa = { status: 'DISCONNECTED', number: '', qr: '', error: String(r) }; });
+  waClient.on('message_create', async msg => {
+    if (!msg.fromMe || msg.isStatus || String(msg.to).includes('@g.us')) return;
+    let to = String(msg.to).replace(/@.*/, '');
+    try { const c = await msg.getChat(); const ct = c && (await c.getContact()); if (ct && ct.number) to = String(ct.number).replace(/\D/g, ''); } catch (e) {}
+    if (!isTracked(to)) return;
+    automationState.messageLedger.unshift({ direction: 'OUTGOING', to, text: msg.body || '', timestamp: new Date().toISOString() });
+    if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
+  });
   waClient.on('message', async msg => {
     if (msg.fromMe || msg.isStatus || String(msg.from).includes('@g.us')) return; // ignore own, status and group messages
     // WhatsApp sometimes gives a long internal id (ending @lid) instead of the phone number. Ask for the real number.
@@ -540,7 +580,16 @@ function startWhatsAppClient() {
     automationState.messageLedger.unshift({ direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString() });
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
   });
-  waClient.initialize().catch(e => { automationState.wa = { status: 'ERROR', number: '', qr: '', error: e.message }; });
+  waClient.initialize().catch(e => {
+    automationState.wa = { status: 'ERROR', number: '', qr: '', error: e.message };
+    // Common on first start: the browser page reloads while WhatsApp loads. Wait and try again, up to 3 times.
+    waRetries += 1;
+    if (waRetries <= 3) {
+      console.log('[beRich Bridge] Start failed (' + e.message + '). Retrying in 6 seconds (' + waRetries + '/3)...');
+      try { waClient.destroy().catch(() => {}); } catch (x) {}
+      setTimeout(() => { waClient = null; startWhatsAppClient(); }, 6000);
+    }
+  });
 }
 
 server.on('error', err => {

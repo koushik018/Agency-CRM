@@ -8538,7 +8538,7 @@ function noteChatEvent_(s, kind) {
   s.lastAt = Date.now();
   if (kind === 'sent') s.sent += 1;
   if (kind === 'received') s.received += 1;
-  if (!s.logged) {
+  if (!s.logged && kind !== 'drafted') {
     s.logged = true;
     recordStudioActivity('Chat started', `${chatUser_()} started a chat with ${s.name}${s.phone ? ' (' + s.phone + ')' : ''} from ${s.sender}`, false);
   }
@@ -8590,8 +8590,8 @@ function enableReplyAlerts() {
 }
 
 /* ---------- send mode: official WhatsApp (default) or the linked bridge ---------- */
-function getSendMode_() { return loadWaPrefs_().sendMode === 'bridge' ? 'bridge' : 'official'; }
-function setSendMode(v) { saveWaPrefs_({ sendMode: v === 'bridge' ? 'bridge' : 'official' }); showCRMToast(v === 'bridge' ? 'Sending through the linked bridge.' : 'Sending with official WhatsApp (you press send).', 'check_circle'); }
+function getSendMode_() { const m = loadWaPrefs_().sendMode; return m === 'bridge' || m === 'window' ? m : 'official'; }
+function setSendMode(v) { v = (v === 'bridge' || v === 'window') ? v : 'official'; saveWaPrefs_({ sendMode: v }); showCRMToast(v === 'bridge' ? 'Sending automatically through the bridge.' : v === 'window' ? 'Messages are placed in the original WhatsApp window. You press Enter there.' : 'Sending with official WhatsApp Web (you press send).', 'check_circle'); }
 
 /* ---------- bridge status and incoming messages ---------- */
 function trackedNumbers_() {
@@ -8610,7 +8610,7 @@ async function pollBridge_() {
     try { fetch(`http://localhost:${port}/api/track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numbers: trackedNumbers_() }) }).catch(() => {}); } catch (e) {}
     const wa = (data.state && data.state.wa) || {};
     chatBridge = { status: wa.status || 'ON', number: wa.number || '', ready: wa.status === 'READY' };
-    (data.state?.messageLedger || []).filter(m => m.direction === 'INCOMING').forEach(item => ingestIncoming_(item));
+    (data.state?.messageLedger || []).forEach(item => { if (item.direction === 'INCOMING') ingestIncoming_(item); else if (item.direction === 'OUTGOING') ingestOutgoingSeen_(item); });
   } catch (e) { chatBridge = { status: 'OFF', number: '', ready: false }; }
   document.querySelectorAll('.chat-bridge-chip').forEach(el => { el.textContent = bridgeText_(); el.dataset.state = chatBridge.ready ? 'ok' : 'off'; });
   updateChatLauncher_();
@@ -8624,6 +8624,20 @@ function bridgeText_() {
   return `Bridge: ${chatBridge.status}`;
 }
 const seenIncoming_ = new Set();
+
+function ingestOutgoingSeen_(item) {
+  const id = 'out|' + item.timestamp + '|' + String(item.text).slice(0, 30) + '|' + item.to;
+  if (seenIncoming_.has(id)) return; seenIncoming_.add(id);
+  const digits = String(item.to || '').replace(/\D/g, '');
+  const lead = (crmState.leads || []).find(l => { const p = String(l.contactPhone || l.phone || '').replace(/\D/g, ''); return p && (p === digits || p.slice(-10) === digits.slice(-10)); });
+  if (!lead && !chatSessions.has('N:' + digits)) return;
+  const s = getSession_(lead || null, digits);
+  const text = waSafeText(item.text);
+  if (threadOf_(s).some(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 120000)) return;
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp window', text: item.text, timestamp: item.timestamp });
+  noteChatEvent_(s, 'sent');
+  renderWin_(s.key);
+}
 function ingestIncoming_(item) {
   const id = item.timestamp + '|' + String(item.text).slice(0, 30) + '|' + item.from;
   if (seenIncoming_.has(id)) return; seenIncoming_.add(id);
@@ -8695,7 +8709,8 @@ function ensureChatLayer_() {
       <label class="wa-help" for="chat-send-mode">Send with</label>
       <select id="chat-send-mode" class="wa-input" onchange="setSendMode(this.value)">
         <option value="official">Official WhatsApp (opens WhatsApp, you press send)</option>
-        <option value="bridge">Linked bridge (sends by itself, needs the bridge)</option>
+        <option value="window">Original WhatsApp window (CRM types it, I press Enter)</option>
+        <option value="bridge">Automatic (bridge sends by itself)</option>
       </select>
       <div class="flex flex-wrap gap-1.5">
         <button type="button" class="wa-chip wa-chip-accent" onclick="endAllChats()">End all chats</button>
@@ -8786,6 +8801,7 @@ function openChatWindow(leadId, phone, opts) {
         <textarea class="wa-input chat-input" data-role="input" rows="3" placeholder="Type your message"></textarea>
         <div class="flex flex-wrap gap-1.5">
           <button type="button" class="wa-chip wa-chip-on" onclick="winSend_('${s.key}')">Send</button>
+          <button type="button" class="wa-chip" onclick="winDraft_('${s.key}')" title="Types this message into the original WhatsApp window. You press Enter there.">Put in WhatsApp</button>
           <button type="button" class="wa-chip" onclick="winLogReply_('${s.key}')">Log client reply</button>
           <button type="button" class="wa-chip" onclick="winEmail_('${s.key}')">Email</button>
           <button type="button" class="wa-chip wa-chip-accent chat-save-client hidden" onclick="saveChatAsClient_('${s.key}')">Save as client</button>
@@ -8853,6 +8869,28 @@ async function winPasteAi_(key) {
     showCRMToast('AI answer placed in the box. Edit it, then press Send.', 'check_circle');
   } catch (e) { showCRMToast('Clipboard blocked. Click the box and press Ctrl+V.', 'warning'); }
 }
+
+/* ---------- original WhatsApp window: put CRM or AI text into the real message box ---------- */
+async function putInWhatsAppWindow_(phone, text) {
+  const port = getActiveSender_().port || 3030;
+  try {
+    const r = await fetch(`http://localhost:${port}/api/draft`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: phone, text }) });
+    const j = await r.json().catch(() => ({}));
+    return r.ok && j.status === 'DRAFTED';
+  } catch (e) { return false; }
+}
+async function winDraft_(key) {
+  const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
+  const input = win.querySelector('[data-role="input"]');
+  const text = waSafeText(input.value);
+  if (!text) { showCRMToast('Type or pick a message first.', 'warning'); return; }
+  if (!s.phone) { showCRMToast('This chat has no WhatsApp number.', 'warning'); return; }
+  if (!chatBridge.ready) { showCRMToast('Link WhatsApp first: run start-whatsapp-bridge.bat and scan the QR code.', 'warning'); return; }
+  const ok = await putInWhatsAppWindow_(s.phone, text);
+  if (ok) { s.drafted = text; noteChatEvent_(s, 'drafted'); showCRMToast('Placed in the WhatsApp window. Check it and press Enter there.', 'chat'); }
+  else showCRMToast('Could not reach the WhatsApp window. Check the bridge window.', 'warning');
+}
+
 async function winSend_(key) {
   const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
   const input = win.querySelector('[data-role="input"]');
@@ -8860,6 +8898,7 @@ async function winSend_(key) {
   if (!text) { showCRMToast('Type a message first.', 'warning'); return; }
   if (!s.phone) { showCRMToast('This chat has no WhatsApp number. Add the number to the client or type it in Chats.', 'warning'); return; }
   const sender = getActiveSender_();
+  if (getSendMode_() === 'window' && chatBridge.ready) { await winDraft_(key); input.value = ''; renderWin_(key); return; }
   let delivered = false;
   if (chatBridge.ready && getSendMode_() === 'bridge') {
     try {
