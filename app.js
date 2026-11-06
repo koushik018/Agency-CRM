@@ -8722,6 +8722,10 @@ function handleBridgeEvent_(ev) {
 const seenIncoming_ = new Set();
 function mediaOf_(item) { const m = item && item.media; if (!m) return undefined; return { type: m.type, name: m.name, tooBig: !!m.tooBig, url: m.url ? `http://localhost:${senderPort_()}${m.url}` : '' }; }
 
+function findTwin_(s, text, ts, exceptWaId) {
+  const t = waSafeText(text); const when = ts ? new Date(ts).getTime() : Date.now();
+  return threadOf_(s).find(m => m.direction === 'OUTGOING' && m.waId !== exceptWaId && waSafeText(m.text) === t && Math.abs(new Date(m.timestamp).getTime() - when) < 30000 && m.ev && !m.claimed);
+}
 function ingestOutgoingSeen_(item) {
   const id = 'out|' + item.timestamp + '|' + String(item.text).slice(0, 30) + '|' + item.to;
   if (seenIncoming_.has(id)) return; seenIncoming_.add(id);
@@ -8736,8 +8740,9 @@ function ingestOutgoingSeen_(item) {
   if (pending) { updateThreadMsg_(s, pending.cid, { status: 'sent', waId: item.id, via: 'WhatsApp Web (confirmed)' }); noteChatEvent_(s, 'sent'); renderWin_(s.key); return; }
   const known = threadOf_(s).find(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && !m.waId && item.id);
   if (known) { updateThreadMsg_(s, known.cid, { waId: item.id }); return; }
+  if (item.id) { const twin = threadOf_(s).find(m => m.direction === 'OUTGOING' && m.waId && m.waId !== item.id && String(m.via || '').includes('linked') && !m.ev && waSafeText(m.text) === text && Math.abs(new Date(m.timestamp).getTime() - new Date(item.timestamp).getTime()) < 30000); if (twin) { updateThreadMsg_(s, twin.cid, { waId: item.id, ev: true, claimed: true, media: twin.media || mediaOf_(item) }); renderWin_(s.key); return; } }
   if (!item.id && threadOf_(s).some(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 120000)) return;
-  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp window', text: item.text, timestamp: item.timestamp, status: 'sent', waId: item.id, media: mediaOf_(item) });
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp window', text: item.text, timestamp: item.timestamp, status: 'sent', waId: item.id, ev: true, media: mediaOf_(item) });
   noteChatEvent_(s, 'sent');
   renderWin_(s.key);
 }
@@ -9091,8 +9096,8 @@ async function winSendFileObj_(key, file) {
     const r = await fetch(`http://localhost:${senderPort_()}/api/send-media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, mimetype: file.type || 'application/octet-stream', filename: file.name, data: dataUrl.split(',')[1], caption }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.success) { showCRMToast('Not sent: ' + (j.error || 'the bridge refused it') + '.', 'warning'); return; }
-    const dupe = j.id && threadOf_(s).find(x => x.waId === j.id);
-    if (dupe) updateThreadMsg_(s, dupe.cid, { via: 'WhatsApp (linked)', media: mediaOf_({ media: j.media }), author: chatUser_() });
+    const dupe = (j.id && threadOf_(s).find(x => x.waId === j.id)) || (!caption && findTwin_(s, '', new Date().toISOString(), j.id)) || (caption && findTwin_(s, caption, new Date().toISOString(), j.id));
+    if (dupe) updateThreadMsg_(s, dupe.cid, { via: 'WhatsApp (linked)', media: mediaOf_({ media: j.media }), author: chatUser_(), claimed: true });
     else pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text: caption, status: 'sent', waId: j.id, media: mediaOf_({ media: j.media }) });
     noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
     showCRMToast('Sent ' + file.name + '.', 'check_circle');
@@ -9113,8 +9118,8 @@ async function winSend_(key) {
       const r = await fetch(`http://localhost:${sender.port || 3030}/api/send-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, text, leadId: s.leadId }) });
       const j = await r.json().catch(() => ({}));
       if (r.ok && j.status === 'SENT') {
-        const already = j.id && threadOf_(s).find(x => x.waId === j.id);
-        if (already) updateThreadMsg_(s, already.cid, { status: already.status === 'pending' ? 'sent' : (already.status || 'sent'), via: 'WhatsApp (linked)', author: chatUser_() });
+        const already = (j.id && threadOf_(s).find(x => x.waId === j.id)) || findTwin_(s, text, new Date().toISOString(), j.id);
+        if (already) updateThreadMsg_(s, already.cid, { status: already.status === 'pending' ? 'sent' : (already.status || 'sent'), via: 'WhatsApp (linked)', author: chatUser_(), claimed: true });
         else pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text, status: 'sent', waId: j.id });
         noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
         showCRMToast('Sent. Delivery ticks update live.', 'check_circle');
@@ -9602,8 +9607,8 @@ function ensureInbox_() {
           <summary>New chat and options</summary>
           <div class="chat-more-body">
             <select id="inbox-new-client" class="wa-input"></select>
-            <div class="flex gap-1.5">
-              <select id="inbox-new-cc" class="wa-input" style="max-width:42%" title="Country code">
+            <div class="inbox-cc-row">
+              <select id="inbox-new-cc" class="wa-input" title="Country code">
                 <option value="91">India +91</option><option value="1">USA / Canada +1</option><option value="44">UK +44</option><option value="971">UAE +971</option><option value="966">Saudi Arabia +966</option><option value="65">Singapore +65</option><option value="61">Australia +61</option><option value="49">Germany +49</option><option value="33">France +33</option><option value="92">Pakistan +92</option><option value="880">Bangladesh +880</option><option value="94">Sri Lanka +94</option><option value="977">Nepal +977</option><option value="60">Malaysia +60</option><option value="27">South Africa +27</option>
               </select>
               <input id="inbox-new-phone" class="wa-input" inputmode="numeric" placeholder="Or the number without country code"/>
@@ -9749,37 +9754,42 @@ function askDeleteMsg_(key, cid) {
     </div>`;
   modal.classList.remove('hidden'); modal.classList.add('flex');
 }
-async function deleteMessage_(key, cid, meOnly) {
+async function deleteMessage_(key, cid, mode) {
+  // mode: undefined = best (everyone for my own messages), 'me' = my WhatsApp only, 'crm' = CRM only (skip WhatsApp)
   closeModal('crm-del-modal');
   const s = chatSessions.get(key); if (!s) return;
   const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
-  let waNote = 'Removed from the CRM only.';
-  if (chatBridge.ready && (m.waId || ((m.text || m.media) && s.phone))) {
-    try {
-      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, number: s.phone, media: !!(m.media && !m.waId), text: m.text, ts: Math.round(new Date(m.timestamp).getTime() / 1000), fromMe: m.direction === 'OUTGOING', everyone: m.direction === 'OUTGOING' && meOnly !== 'me', allowMeOnly: !!meOnly }) });
-      const j = await r.json().catch(() => ({}));
-      if (r.status === 409) { askDeleteFallback_(key, cid, j.error); return; }
-      if (r.status === 404) { removeThreadMsg_(s, cid); renderWin_(key); refreshInboxList_(); showCRMToast('WhatsApp no longer had this message, so it was removed from the CRM only.', 'delete'); return; }   // WhatsApp will not delete it for the client: ask before doing less
-      if (r.ok && j.success) {
-        waNote = j.deleted === 'everyone' ? 'Deleted for everyone in WhatsApp (confirmed) and removed from the CRM.'
-          : (m.direction === 'OUTGOING' ? 'Removed from the CRM and your WhatsApp. The client can still see it' + (j.note ? ': ' + j.note + '.' : '.') : 'Removed from the CRM and your WhatsApp. The client keeps their own copy.');
-      } else waNote = 'WhatsApp did not delete it (' + (j.error || 'unknown reason') + '). It was NOT removed anywhere.';
-      if (!(r.ok && j.success)) { showCRMToast(waNote, 'warning'); return; }       // keep the CRM copy when WhatsApp failed
-    } catch (e) { showCRMToast('Could not reach the bridge, so nothing was deleted.', 'warning'); return; }
+  const done = (text, kind) => { removeThreadMsg_(s, cid); renderWin_(key); try { refreshInboxList_(); } catch (e) {} showCRMToast(text, kind || 'delete'); };
+  if (mode === 'crm' || !chatBridge.ready || !(m.waId || ((m.text || m.media) && s.phone))) {
+    return done(mode === 'crm' ? 'Removed from the CRM only. It stays in WhatsApp.' : 'Removed from the CRM only (WhatsApp is not linked or this message is not in WhatsApp).');
   }
-  removeThreadMsg_(s, cid);
-  renderWin_(key); refreshInboxList_();
-  showCRMToast(waNote, 'delete');
+  let r, j;
+  try {
+    r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, number: s.phone, media: !!(m.media && !m.waId), text: m.text, ts: Math.round(new Date(m.timestamp).getTime() / 1000), fromMe: m.direction === 'OUTGOING', everyone: m.direction === 'OUTGOING' && mode !== 'me', allowMeOnly: !!mode }) });
+    j = await r.json().catch(() => ({}));
+  } catch (e) { askDeleteFallback_(key, cid, 'The bridge did not answer', 'retry'); return; }
+  if (r.status === 409) { askDeleteFallback_(key, cid, j.error, 'me'); return; }                 // WhatsApp will not delete it for the client
+  if (r.status === 404 || r.status === 403) return done('WhatsApp no longer had this message, so it was removed from the CRM only.');
+  if (r.ok && j.success) {
+    return done(j.deleted === 'everyone' ? 'Deleted for everyone in WhatsApp (confirmed) and removed from the CRM.'
+      : (m.direction === 'OUTGOING' ? 'Removed from the CRM and your WhatsApp. The client can still see it' + (j.note ? ': ' + j.note + '.' : '.') : 'Removed from the CRM and your WhatsApp. The client keeps their own copy.'));
+  }
+  askDeleteFallback_(key, cid, j.error || 'WhatsApp refused', 'retry');
 }
-function askDeleteFallback_(key, cid, reason) {
-  const modal = document.getElementById('crm-del-modal'); if (!modal) return;
+function askDeleteFallback_(key, cid, reason, kind) {
+  let modal = document.getElementById('crm-del-modal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'crm-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
+  const canMe = kind === 'me';
   modal.innerHTML = `
     <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-del-modal')"></div>
     <div class="relative w-full max-w-md neo-modal p-6 z-10 flex flex-col gap-3">
-      <h3 class="text-lg font-bold">WhatsApp will not delete this for the client</h3>
-      <p class="wa-help">${mailEsc_(reason || 'WhatsApp refused.')}. Nothing was deleted yet.</p>
-      <p class="wa-help">You can remove it from the CRM and your own WhatsApp only. The client will still see it.</p>
-      <div class="flex gap-2 justify-end flex-wrap"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Keep it</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}','me')">Remove from CRM and my WhatsApp</button></div>
+      <h3 class="text-lg font-bold">${canMe ? 'WhatsApp will not delete this for the client' : 'WhatsApp did not delete this'}</h3>
+      <p class="wa-help">${mailEsc_(reason || 'WhatsApp refused')}. Nothing was deleted yet. Choose what to do:</p>
+      <div class="flex gap-2 justify-end flex-wrap">
+        <button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Keep it</button>
+        ${canMe ? `<button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}','me')">Remove from CRM and my WhatsApp</button>` : `<button type="button" class="wa-chip" onclick="deleteMessage_('${key}','${cid}')">Try again</button>`}
+        <button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}','crm')">Remove from the CRM only</button>
+      </div>
     </div>`;
   modal.classList.remove('hidden'); modal.classList.add('flex');
 }
@@ -9848,20 +9858,28 @@ function askDeleteChat_(key) {
     </div>`;
   modal.classList.remove('hidden'); modal.classList.add('flex');
 }
-async function deleteChatNow_(key) {
+async function deleteChatNow_(key, mode) {
   closeModal('crm-del-modal');
   const s = chatSessions.get(key); if (!s) return;
-  let note = 'Chat deleted from the CRM.';
-  if (chatBridge.ready && s.phone) {
-    try {
-      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number: s.phone }) });
-      const j = await r.json().catch(() => ({}));
-      if (!(r.ok && j.success)) { showCRMToast('WhatsApp did not delete the chat (' + (j.error || 'unknown reason') + '). Nothing was deleted.', 'warning'); return; }
-      note = 'Chat deleted from the CRM and your WhatsApp. The client keeps their copy.';
-    } catch (e) { showCRMToast('Could not reach the bridge, so nothing was deleted.', 'warning'); return; }
-  }
-  clearChatCore_(s); renderWin_(key); try { refreshInboxList_(); } catch (e) {}
-  showCRMToast(note, 'delete');
+  const finish = note => { clearChatCore_(s); renderWin_(key); try { refreshInboxList_(); } catch (e) {} showCRMToast(note, 'delete'); };
+  if (mode === 'crm' || !chatBridge.ready || !s.phone) return finish(mode === 'crm' ? 'Chat deleted from the CRM only. It stays in WhatsApp.' : 'Chat deleted from the CRM.');
+  let reason = '';
+  try {
+    const r = await fetch(`http://localhost:${senderPort_()}/api/delete-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number: s.phone }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.success) return finish('Chat deleted from the CRM and your WhatsApp. The client keeps their copy.');
+    reason = j.error || 'WhatsApp refused';
+  } catch (e) { reason = 'The bridge did not answer'; }
+  let modal = document.getElementById('crm-del-modal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'crm-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
+  modal.innerHTML = `
+    <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-del-modal')"></div>
+    <div class="relative w-full max-w-md neo-modal p-6 z-10 flex flex-col gap-3">
+      <h3 class="text-lg font-bold">WhatsApp did not delete the chat</h3>
+      <p class="wa-help">${mailEsc_(reason)}. Nothing was deleted yet.</p>
+      <div class="flex gap-2 justify-end flex-wrap"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Keep it</button><button type="button" class="wa-chip" onclick="deleteChatNow_('${key}')">Try again</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteChatNow_('${key}','crm')">Delete from the CRM only</button></div>
+    </div>`;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
 }
 
 function clearChatCrm_(key) {

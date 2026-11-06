@@ -2129,3 +2129,9 @@ details.wa-collapsible[open] > summary { margin-bottom: 8px; }
 .kanban-deal-card:hover .deal-remove-btn, .deal-remove-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .deal-remove-btn { opacity: 1; } }
 .deal-demo-badge { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 9999px; background: var(--uv-accent-soft); color: var(--uv-ink); border: 1px solid var(--uv-rule-2); }
+
+/* v81: new-chat panel never overflows sideways; country code above the number */
+.inbox-list-pane { overflow-x: hidden; }
+.inbox-list-pane .wa-input, .inbox-list-pane select, .chat-more-body .wa-input, .chat-more-body select { min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box; text-overflow: ellipsis; }
+.inbox-cc-row { display: flex; flex-direction: column; gap: 8px; }
+.chat-more-body .wa-chip { white-space: normal; }
