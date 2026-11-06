@@ -3746,7 +3746,7 @@ function sendWhatsAppDraft(leadId) {
 
   // Forward to local 24/7 bridge dispatcher if running
   try {
-    fetch('http://localhost:3030/api/send-message', {
+    if (chatBridge && chatBridge.ready) fetch('http://localhost:3030/api/send-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3761,7 +3761,7 @@ function sendWhatsAppDraft(leadId) {
     ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waSafeText(text))}`
     : `https://wa.me/?text=${encodeURIComponent(waSafeText(text))}`;
 
-  window.open(waUrl, '_blank');
+  if (!(chatBridge && chatBridge.ready)) window.open(waUrl, '_blank');
   if (crmState.activeDossierLeadId === lead.id) {
     renderDossierModalContent(lead);
   }
@@ -8396,7 +8396,7 @@ function readJson_(key) { try { return JSON.parse(localStorage.getItem(key) || '
 function mergeChats_(a, b) {
   const seen = new Set(); const out = [];
   [...(a || []), ...(b || [])].forEach(m => {
-    const k = (m.timestamp || '') + '|' + (m.direction || '') + '|' + String(m.text || '').slice(0, 40);
+    const k = m.waId ? 'id|' + m.waId : (m.timestamp || '') + '|' + (m.direction || '') + '|' + String(m.text || '').slice(0, 40);
     if (!seen.has(k)) { seen.add(k); out.push(m); }
   });
   out.sort((x, y) => new Date(x.timestamp || 0) - new Date(y.timestamp || 0));
@@ -8413,7 +8413,7 @@ function persistChats_() {
 }
 function rehydrateChats_() {
   const store = readJson_(CHAT_STORE_KEY);
-  (crmState.leads || []).forEach(l => { if (store[l.id]) l.chatHistory = mergeChats_(l.chatHistory, store[l.id]); });
+  (crmState.leads || []).forEach(l => { if (store[l.id]) l.chatHistory = mergeChats_(l.chatHistory, store[l.id]); (l.chatHistory || []).forEach((m, i) => { if (!m.cid) m.cid = 'c' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 6); }); });
 }
 function visibleChat_(history) {
   const me = chatUser_();
@@ -8535,7 +8535,12 @@ function updateThreadMsg_(s, cid, patch) {
   if (m) { Object.assign(m, patch); try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {} }
   return m || null;
 }
+/* ---------- remembered deletes: a message deleted here must not come back from WhatsApp sync ---------- */
+const TOMB_KEY = 'beRich_deleted_msgs_v1';
+function tombstone_(waId) { try { return !!waId && (readJson_(TOMB_KEY).ids || []).includes(String(waId)); } catch (e) { return false; } }
+function addTombstone_(waId) { if (!waId) return; try { const t = readJson_(TOMB_KEY); t.ids = [...new Set([...(t.ids || []), String(waId)])].slice(-1000); localStorage.setItem(TOMB_KEY, JSON.stringify(t)); } catch (e) {} }
 function removeThreadMsg_(s, cid) {
+  try { const gone = threadOf_(s).find(x => x.cid === cid); if (gone && gone.waId) addTombstone_(gone.waId); } catch (e) {}
   try { const st = readJson_(CHAT_STORE_KEY); if (s.leadId && st[s.leadId]) { st[s.leadId] = st[s.leadId].filter(x => x.cid !== cid); localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(st)); } } catch (e) {}
   if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); if (l && Array.isArray(l.chatHistory)) { l.chatHistory = l.chatHistory.filter(x => x.cid !== cid); saveToLocalCache(); } return; }
   const store = readJson_(NUM_CHAT_KEY); store[s.key] = (store[s.key] || []).filter(x => x.cid !== cid);
@@ -8636,8 +8641,8 @@ function setSendMode(v) { v = (v === 'bridge' || v === 'window') ? v : 'official
 /* ---------- bridge status and incoming messages ---------- */
 function trackedNumbers_() {
   const set = new Set();
-  (crmState.leads || []).forEach(l => { const d = String(l.contactPhone || l.phone || '').replace(/\D/g, ''); if (d.length >= 7) set.add(d); });
-  chatSessions.forEach(s => { if (s.phone) set.add(s.phone); });
+  (crmState.leads || []).forEach(l => { const d = cleanWhatsAppPhone(l.contactPhone || l.phone || ''); if (d.length >= 7) set.add(d); });
+  chatSessions.forEach(s => { if (s.phone) set.add(cleanWhatsAppPhone(s.phone)); });
   Object.keys(readJson_(NUM_CHAT_KEY)).forEach(k => { const d = k.replace(/^N:/, ''); if (d.length >= 7) set.add(d); });
   return [...set];
 }
@@ -8725,7 +8730,8 @@ function ingestIncoming_(item) {
   if (!lead && !chatSessions.has('N:' + digits) && !readJson_(NUM_CHAT_KEY)['N:' + digits]) return; // not a CRM contact and not a chat you opened: ignore completely
   const s = getSession_(lead || null, digits);
   const hist = threadOf_(s);
-  if (hist.some(m => (item.id && m.waId === item.id) || (!item.id && m.timestamp === item.timestamp) || (m.direction === 'INCOMING' && m.text === item.text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 3000))) return;
+  if (item.id && tombstone_(item.id)) return;
+  if (item.id ? hist.some(m => m.waId === item.id) : hist.some(m => m.timestamp === item.timestamp || (m.direction === 'INCOMING' && m.text === item.text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 3000))) return;
   seenIncoming_.add(seenIncomingKey);
   pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp, waId: item.id, media: mediaOf_(item) });
   notifyIncoming_(lead || null, item.text, digits);
@@ -8856,7 +8862,7 @@ function openChatWindow(leadId, phone, opts) {
           <button type="button" class="wa-paste only-docked" title="Pop this chat out into its own floating window" onclick="popOutChat_('${s.key}')">Float</button>
           <button type="button" class="wa-paste only-floating" title="Put this chat back into the Inbox" onclick="dockChat_('${s.key}')">Inbox</button>
           <button type="button" class="wa-paste" title="Open in a new tab" onclick="openChatTab('${s.key}')">New tab</button>
-          <button type="button" class="wa-paste" title="Fetch the latest messages from WhatsApp now" onclick="syncChatFromWhatsApp_('${s.key}', false).then(() => showCRMToast('Synced with WhatsApp.', 'sync'))">Sync</button>
+          <button type="button" class="wa-paste" title="Fetch the latest messages from WhatsApp now" onclick="syncChatFromWhatsApp_('${s.key}', false).then(ok => showCRMToast(ok ? 'Synced with WhatsApp.' : 'Could not sync: WhatsApp is not linked or the bridge did not answer.', ok ? 'sync' : 'warning'))">Sync</button>
           <button type="button" class="wa-paste" title="Clear this chat in the CRM only" onclick="clearChatCrm_('${s.key}')">Clear</button>
           <button type="button" class="wa-paste chat-end" title="Delete this whole chat in the CRM and in your WhatsApp" onclick="askDeleteChat_('${s.key}')">Delete chat</button>
           <button type="button" class="wa-paste only-floating" title="Shrink" onclick="toggleMinChat('${s.key}')">Min</button>
@@ -9748,36 +9754,40 @@ function askDeleteFallback_(key, cid, reason) {
 
 /* ---------- keep a chat identical to the real WhatsApp chat ---------- */
 async function syncChatFromWhatsApp_(key, quiet) {
-  const s = chatSessions.get(key); if (!s || !s.phone || !chatBridge.ready) return;
+  const s = chatSessions.get(key); if (!s || !s.phone || !chatBridge.ready) return false;
   const nowMs = Date.now();
-  if (s._syncing || (quiet && nowMs - (s._syncAt || 0) < 12000)) return;
+  if (s._syncing || (quiet && nowMs - (s._syncAt || 0) < 12000)) return false;
   s._syncing = true; s._syncAt = nowMs;
   try {
     const r = await fetch(`http://localhost:${senderPort_()}/api/chat-history?number=${encodeURIComponent(s.phone)}`, { cache: 'no-store' });
-    if (!r.ok) return;
+    if (!r.ok) return false;
     const j = await r.json(); let changed = false; const newIncoming = [];
     const ackStatus = a => a >= 3 ? 'read' : a === 2 ? 'delivered' : 'sent';
     for (const m of (j.messages || [])) {
       const thread = threadOf_(s);
       if (m.type === 'revoked') { const mine = thread.find(x => x.waId === m.id); if (mine) { removeThreadMsg_(s, mine.cid); changed = true; } continue; }
       if (!m.id) continue;
+      if (tombstone_(m.id)) continue;
+      if (!m.text && !m.hasMedia) continue;
       const dir = m.fromMe ? 'OUTGOING' : 'INCOMING', t = new Date(m.timestamp).getTime();
-      const same = x => x.waId === m.id || (x.direction === dir && waSafeText(x.text) === waSafeText(m.text) && Math.abs(new Date(x.timestamp) - t) < 6000);
+      const same = x => x.waId === m.id || (!x.waId && x.direction === dir && waSafeText(x.text) === waSafeText(m.text) && Math.abs(new Date(x.timestamp) - t) < 6000);
       const x = thread.find(same);
       if (x) {
         if (!x.waId) { updateThreadMsg_(s, x.cid, { waId: m.id }); changed = true; }
+        if (m.media && m.media.url && !(x.media && x.media.url)) { updateThreadMsg_(s, x.cid, { media: mediaOf_(m), text: x.text === '(picture or file: open it in WhatsApp)' ? '' : x.text }); changed = true; }
         if (m.fromMe) {
           if (x.status === 'pending') { updateThreadMsg_(s, x.cid, { status: ackStatus(m.ack), via: 'WhatsApp Web (confirmed)' }); noteChatEvent_(s, 'sent'); changed = true; }
           else if (m.ack >= 1 && ackStatus(m.ack) !== x.status) { updateThreadMsg_(s, x.cid, { status: ackStatus(m.ack) }); changed = true; }
         }
         continue;
       }
-      pushThread_(s, { direction: dir, author: m.fromMe ? chatUser_() : s.name, via: m.fromMe ? 'WhatsApp (synced)' : undefined, text: (m.hasMedia && !m.text) ? '(picture or file: open it in WhatsApp)' : m.text, timestamp: m.timestamp, waId: m.id, status: m.fromMe ? ackStatus(m.ack) : undefined });
+      pushThread_(s, { direction: dir, author: m.fromMe ? chatUser_() : s.name, via: m.fromMe ? 'WhatsApp (synced)' : undefined, text: (m.hasMedia && !m.text && !(m.media && m.media.url)) ? '(picture or file: open it in WhatsApp)' : m.text, media: mediaOf_(m), timestamp: m.timestamp, waId: m.id, status: m.fromMe ? ackStatus(m.ack) : undefined });
       changed = true; if (!m.fromMe) newIncoming.push(m.text);
     }
     if (changed) { renderWin_(key); try { refreshInboxList_(); } catch (e) {} }
     if (newIncoming.length && quiet !== 'silent') { s.unread += newIncoming.length; noteChatEvent_(s, 'received'); showCRMToast(`New reply from ${s.name}: ${String(newIncoming[newIncoming.length - 1] || '(picture or file)').slice(0, 60)}`, 'chat'); }
-  } catch (e) { /* bridge not reachable: the events and the next round will catch up */ }
+    return true;
+  } catch (e) { return false; /* bridge not reachable: the events and the next round will catch up */ }
   finally { s._syncing = false; }
 }
 setInterval(() => {
@@ -9833,7 +9843,7 @@ function clearChatCrm_(key) {
 
 
 /* ---------- remove deals: one deal, or only the demo deals ---------- */
-function isDemoLead_(l) { return !!l && (/^DEAL-DEMO-/.test(String(l.id)) || l.demo === true); }
+function isDemoLead_(l) { return !!l && /^DEAL-DEMO-/.test(String(l.id)); }
 function dealModal_() {
   let modal = document.getElementById('crm-deal-del-modal');
   if (!modal) { modal = document.createElement('div'); modal.id = 'crm-deal-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
@@ -9886,10 +9896,13 @@ function deleteDemoDealsNow_() {
   globalState.leads = globalState.leads.filter(l => !isDemoLead_(l));
   saveDeletedIds_(); saveToLocalCache();
   recordStudioActivity('Removed demo deals', `${chatUser_()} deleted ${demos.length} demo deal${demos.length === 1 ? '' : 's'}`, false);
-  try { pushToGitHubDatabase(`${getActiveStudioUser()}: Removed ${demos.length} demo deals`); } catch (e) {}
+  let pushed = null;
+  try { pushed = pushToGitHubDatabase(`${getActiveStudioUser()}: Removed ${demos.length} demo deals`); } catch (e) {}
   try { syncGlobalConfigToSheet(); } catch (e) {}
   renderKanban(); renderAll(); try { refreshInboxList_(); } catch (e) {}
-  showCRMToast(`${demos.length} demo deal${demos.length === 1 ? '' : 's'} removed. Real deals were not touched.`, 'delete');
+  const base = `${demos.length} demo deal${demos.length === 1 ? '' : 's'} removed. Real deals were not touched.`;
+  showCRMToast(base, 'delete');
+  Promise.resolve(pushed).then(r => { if (!r || r.status !== 'success') showCRMToast('Removed on this device only: ' + ((r && r.message) || 'could not save to GitHub') + ' Other devices keep them until the Database Security Key works.', 'warning'); }).catch(() => {});
 }
 
 /* ---------- keep chats out of GitHub, and keep them after a pull ---------- */

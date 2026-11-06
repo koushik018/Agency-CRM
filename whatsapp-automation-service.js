@@ -74,12 +74,17 @@ function saveMediaFile(mimetype, base64, hintName) {
   try { const all = fs.readdirSync(MEDIA_DIR).map(n => ({ n, t: fs.statSync(path.join(MEDIA_DIR, n)).mtimeMs })).sort((x, y) => y.t - x.t); all.slice(300).forEach(o => fs.unlinkSync(path.join(MEDIA_DIR, o.n))); } catch (e) {}
   return { type: String(mimetype).split(';')[0], name: hintName || file, url: '/api/media/' + file, size: bytes.length };
 }
+const mediaCache = new Map(); // message id -> saved media, so a picture is downloaded once
 async function saveMediaIfAny(msg) {
   try {
     if (!msg.hasMedia) return null;
+    const key = msgSerial(msg);
+    if (key && mediaCache.has(key)) return mediaCache.get(key);
     const m = await msg.downloadMedia();
     if (!m || !m.data) return null;
-    return saveMediaFile(m.mimetype, m.data, m.filename);
+    const saved = saveMediaFile(m.mimetype, m.data, m.filename);
+    if (key && saved) mediaCache.set(key, saved);
+    return saved;
   } catch (e) { return null; }
 }
 const ALLOWED_ORIGINS = [
@@ -184,7 +189,12 @@ function calculateLiveSlaTelemetry() {
 }
 
 // Create HTTP Server
+// EGM_RESOLVED: the bridge only answers requests addressed to localhost (blocks DNS-rebinding from a hostile website)
+const HOST_OK = new RegExp('^(localhost|127\.0\.0\.1|\[::1\])(:' + String(PORT) + ')?$', 'i');
+process.on('unhandledRejection', e => console.log('[beRich Bridge] Unhandled error (kept running): ' + (e && e.message || e)));
+process.on('uncaughtException', e => console.log('[beRich Bridge] Unexpected error (kept running): ' + (e && e.message || e)));
 const server = http.createServer((req, res) => {
+  if (!HOST_OK.test(String(req.headers.host || ''))) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Host not allowed' })); return; }
   // CORS Headers
   // Only the CRM page (or this machine) may talk to the bridge. A random website must never be able to send WhatsApp messages from your number.
   const origin = req.headers.origin || '';
@@ -250,6 +260,7 @@ const server = http.createServer((req, res) => {
         trackedNumbers = new Set(raw.map(last10));
         const nowSec = Math.floor(Date.now() / 1000);
         raw.forEach(n => { if (!lastSeen[n]) lastSeen[n] = nowSec; }); // a newly tracked number starts from now, no old history
+        Object.keys(lastSeen).forEach(k => { if (!trackedFull.has(k)) delete lastSeen[k]; });
         saveTracked();
         seedLids(raw);
         automationState.messageLedger = automationState.messageLedger.filter(m => m.direction !== 'INCOMING' || isTracked(m.from));
@@ -288,7 +299,15 @@ const server = http.createServer((req, res) => {
         step = 'read messages';
         const msgs = await chat.fetchMessages({ limit: 30 });
         for (const m of msgs) { const id = msgSerial(m); if (id && m.fromMe) trackedMsgIds.add(id); }
-        return send(200, { success: true, messages: msgs.filter(m => !m.isStatus).map(m => ({ id: msgSerial(m), fromMe: !!m.fromMe, text: m.body || '', timestamp: new Date((m.timestamp || 0) * 1000).toISOString(), type: m.type, hasMedia: !!m.hasMedia, ack: m.ack })) });
+        const list = msgs.filter(m => !m.isStatus);
+        let budget = 4; // download at most 4 new pictures per call
+        const out = [];
+        for (const m of list) {
+          const id = msgSerial(m); let media = null;
+          if (m.hasMedia && m.type !== 'revoked' && (mediaCache.has(id) || budget > 0)) { if (!mediaCache.has(id)) budget--; media = await saveMediaIfAny(m); }
+          out.push({ id, fromMe: !!m.fromMe, text: m.body || '', timestamp: new Date((m.timestamp || 0) * 1000).toISOString(), type: m.type, hasMedia: !!m.hasMedia, ack: m.ack, media });
+        }
+        return send(200, { success: true, messages: out });
       } catch (e) { return send(502, { error: (e && e.message && e.message.length > 3 ? e.message : 'WhatsApp page error (' + String(e && e.message || e) + ')'), step: typeof step === 'string' ? step : undefined }); }
     })();
     return;
@@ -472,7 +491,7 @@ const server = http.createServer((req, res) => {
         const crm = loadCrmData();
         if (crm && Array.isArray(crm.leads)) {
           const matchedLead = crm.leads.find(l => 
-            (l.phone && l.phone.replace(/\\D/g, '') === from.replace(/\\D/g, '')) ||
+            (l.phone && l.phone.replace(/\D/g, '') === from.replace(/\D/g, '')) ||
             (l.clientName && text.toLowerCase().includes(l.clientName.toLowerCase()))
           );
           if (matchedLead) {
@@ -571,7 +590,7 @@ const server = http.createServer((req, res) => {
           status: 'DISPATCHED',
           to,
           timestamp,
-          waUrl: `https://wa.me/${to.replace(/\\D/g, '')}?text=${encodeURIComponent(text)}`
+          waUrl: `https://wa.me/${to.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`
         }));
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -907,7 +926,9 @@ function startWhatsAppClient() {
   });
   waClient.on('message_ack', (msg, ack) => {
     const id = msgSerial(msg);
-    if (id && trackedMsgIds.has(id)) emitEvent({ kind: 'ack', id, ack });
+    // after a restart trackedMsgIds is empty: accept any message of mine to a tracked number
+    const toNum = String(msg.to || '').replace(/@.*/, '');
+    if (id && (trackedMsgIds.has(id) || (msg.fromMe && (isTracked(toNum) || /@lid$/.test(String(msg.to || '')))))) { trackedMsgIds.add(id); emitEvent({ kind: 'ack', id, ack }); }
   });
   waClient.on('message', async msg => {
     if (msg.fromMe || msg.isStatus || String(msg.from).includes('@g.us')) return; // ignore own, status and group messages
@@ -918,14 +939,16 @@ function startWhatsAppClient() {
     await handleIncoming(msg, from);
   });
   waClient.on('ready', () => { setTimeout(() => backfillTracked('ready'), 3000); });
+  const mineClient = waClient;
   waClient.initialize().catch(e => {
+    if (mineClient !== waClient || restarting) return; // a restart already replaced this client: do not start a second one on the same profile
     automationState.wa = { status: 'ERROR', number: '', qr: '', error: e.message };
     // Common on first start: the browser page reloads while WhatsApp loads. Wait and try again, up to 3 times.
     waRetries += 1;
     if (waRetries <= 3) {
       console.log('[beRich Bridge] Start failed (' + e.message + '). Retrying in 6 seconds (' + waRetries + '/3)...');
-      try { waClient.destroy().catch(() => {}); } catch (x) {}
-      setTimeout(() => { waClient = null; startWhatsAppClient(); }, 6000);
+      try { mineClient.destroy().catch(() => {}); } catch (x) {}
+      setTimeout(() => { if (waClient === mineClient && !restarting) { waClient = null; startWhatsAppClient(); } }, 6000);
     }
   });
 }
