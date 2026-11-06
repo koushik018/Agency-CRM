@@ -876,7 +876,22 @@ setInterval(() => {
     if ((br && !br.isConnected()) || (pg && pg.isClosed())) restartWhatsApp('The WhatsApp window was closed');
   } catch (e) {}
 }, 5000);
+// whatsapp-web.js 1.34.7 cannot send pictures on current WhatsApp Web (upstream fix wwebjs/whatsapp-web.js#201923, not released yet). Apply the same one-line fix here, once.
+function patchWwebjsMedia() {
+  try {
+    const f = path.join(__dirname, 'node_modules', 'whatsapp-web.js', 'src', 'util', 'Injected', 'Utils.js');
+    let s = fs.readFileSync(f, 'utf-8');
+    if (s.includes('delete message.__x_id')) return;
+    const nlx = s.includes(String.fromCharCode(13)) ? String.fromCharCode(13, 10) : String.fromCharCode(10);
+    const a = '...extraOptions,' + nlx + '        };' + nlx + nlx + "        // Bot's won't reply";
+    if (!s.includes(a)) { console.log('[beRich Bridge] Picture fix: place not found, skipped'); return; }
+    s = s.replace(a, '...extraOptions,' + nlx + '        };' + nlx + '        if (message.__x_id) { delete message.__x_id; } // beRich: picture sending fix (upstream #201923)' + nlx + nlx + "        // Bot's won't reply");
+    fs.writeFileSync(f, s, 'utf-8');
+    console.log('[beRich Bridge] Applied the picture-sending fix to whatsapp-web.js');
+  } catch (e) { console.log('[beRich Bridge] Picture fix not applied: ' + e.message); }
+}
 function startWhatsAppClient() {
+  patchWwebjsMedia();
   if (process.env.NO_WA) { automationState.wa.status = 'DISABLED_FOR_TEST'; return; }
   let Client, LocalAuth, QR;
   try {
