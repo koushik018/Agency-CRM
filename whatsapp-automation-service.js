@@ -54,6 +54,16 @@ const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'
 const EXT_MIME = Object.fromEntries(Object.entries(MIME_EXT).map(([m, e]) => [e, m]));
 const MAX_MEDIA_BYTES = 12 * 1024 * 1024;
 const seenMsgIds = new Set();
+function msgSerial(m) {
+  const k = m && m.id;
+  if (!k) return undefined;
+  if (typeof k === 'string') return k;
+  if (k._serialized) return k._serialized;
+  if (!k.id) return undefined;
+  const remote = k.remote && (k.remote._serialized || k.remote);
+  const part = k.participant && (k.participant._serialized || k.participant);
+  return [k.fromMe ? 'true' : 'false', remote, k.id, part].filter(x => x !== undefined && x !== null && x !== '').join('_');
+}
 function saveMediaFile(mimetype, base64, hintName) {
   const bytes = Buffer.from(base64, 'base64');
   if (bytes.length > MAX_MEDIA_BYTES) return { type: mimetype, name: hintName || 'file', tooBig: true, size: bytes.length };
@@ -241,6 +251,7 @@ const server = http.createServer((req, res) => {
         const nowSec = Math.floor(Date.now() / 1000);
         raw.forEach(n => { if (!lastSeen[n]) lastSeen[n] = nowSec; }); // a newly tracked number starts from now, no old history
         saveTracked();
+        seedLids(raw);
         automationState.messageLedger = automationState.messageLedger.filter(m => m.direction !== 'INCOMING' || isTracked(m.from));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, tracking: trackedNumbers.size }));
@@ -260,6 +271,43 @@ const server = http.createServer((req, res) => {
     res.write('data: ' + JSON.stringify({ kind: 'status', status: automationState.wa.status, number: automationState.wa.number }) + '\n\n');
     const ka = setInterval(() => { try { res.write(': keep-alive\n\n'); } catch (e) {} }, 20000);
     req.on('close', () => { clearInterval(ka); sseClients.delete(res); });
+    return;
+  }
+
+  // The newest messages of a CRM client's chat, straight from WhatsApp, so the CRM can show exactly what the phone shows.
+  if (url.pathname === '/api/chat-history' && req.method === 'GET') {
+    (async () => {
+      const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+      try {
+        const number = (url.searchParams.get('number') || '').replace(/\D/g, '');
+        if (!isTracked(number)) return send(403, { error: 'Not a CRM client chat' });
+        if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
+        const wid = await waClient.getNumberId(number); if (!wid) return send(404, { error: 'That number is not on WhatsApp' });
+        const chat = await waClient.getChatById(wid._serialized);
+        const msgs = await chat.fetchMessages({ limit: 30 });
+        for (const m of msgs) { const id = msgSerial(m); if (id && m.fromMe) trackedMsgIds.add(id); }
+        return send(200, { success: true, messages: msgs.filter(m => !m.isStatus).map(m => ({ id: msgSerial(m), fromMe: !!m.fromMe, text: m.body || '', timestamp: new Date((m.timestamp || 0) * 1000).toISOString(), type: m.type, hasMedia: !!m.hasMedia, ack: m.ack })) });
+      } catch (e) { return send(502, { error: e.message }); }
+    })();
+    return;
+  }
+
+  // Delete a whole chat from YOUR WhatsApp (the client keeps their copy). CRM client chats only.
+  if (url.pathname === '/api/delete-chat' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', async () => {
+      const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      try {
+        const number = String((JSON.parse(body || '{}')).number || '').replace(/\D/g, '');
+        if (!isTracked(number)) return send(403, { error: 'Not a CRM client chat' });
+        if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
+        const wid = await waClient.getNumberId(number); if (!wid) return send(404, { error: 'That number is not on WhatsApp' });
+        const chat = await waClient.getChatById(wid._serialized);
+        const ok = await chat.delete();
+        return send(200, { success: !!ok, deleted: 'me' });
+      } catch (e) { return send(502, { success: false, error: e.message }); }
+    });
     return;
   }
 
@@ -292,7 +340,7 @@ const server = http.createServer((req, res) => {
         const { MessageMedia } = require('whatsapp-web.js');
         const media = new MessageMedia(p.mimetype, p.data, p.filename || undefined);
         const sent = await waClient.sendMessage(digits + '@c.us', media, p.caption ? { caption: String(p.caption) } : {});
-        const sid = sent && sent.id && sent.id._serialized;
+        const sid = msgSerial(sent);
         if (sent && sent.to) resolver.learn(sent.to, digits);
         if (sid) { trackedMsgIds.add(sid); seenMsgIds.add(sid); }
         const saved = saveMediaFile(p.mimetype, p.data, p.filename);
@@ -314,8 +362,19 @@ const server = http.createServer((req, res) => {
       const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
       try {
         const payload = JSON.parse(body || '{}');
-        if (!payload.id) return send(400, { error: 'Missing message id' });
+        if (!payload.id && !(payload.number && payload.text)) return send(400, { error: 'Missing message id' });
         if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
+        if (!payload.id) {
+          // older CRM messages have no WhatsApp id: find the newest message with the same text near that time in this client's chat
+          if (!isTracked(payload.number)) return send(403, { error: 'Not a CRM client chat' });
+          const wid0 = await waClient.getNumberId(String(payload.number).replace(/\D/g, '')).catch(() => null);
+          const chat0 = wid0 && await waClient.getChatById(wid0._serialized).catch(() => null);
+          const list0 = chat0 ? await chat0.fetchMessages({ limit: 60 }).catch(() => []) : [];
+          const want = String(payload.text).trim();
+          const hit = list0.filter(m => !!m.fromMe === !!payload.fromMe && String(m.body || '').trim() === want && (!payload.ts || Math.abs(m.timestamp - payload.ts) < 900)).sort((x, y) => y.timestamp - x.timestamp)[0];
+          if (!hit) return send(404, { error: 'could not find that message in WhatsApp (it may already be gone)' });
+          payload.id = msgSerial(hit);
+        }
         let msg = await waClient.getMessageById(payload.id).catch(() => null);
         if (!msg) return send(404, { error: 'WhatsApp no longer has this message in its list' });
         let contactNumber = '';
@@ -338,8 +397,12 @@ const server = http.createServer((req, res) => {
           return send(200, { success: true, deleted: 'me', note: 'WhatsApp would not delete it for the client', info });
         }
         await msg.delete(wantEveryone);
-        await new Promise(r => setTimeout(r, 900));
-        const after = await waClient.pupPage.evaluate(id => { const m = window.require('WAWebCollections').Msg.get(id); return m ? m.type : 'gone'; }, payload.id).catch(() => 'unknown');
+        let after = 'unknown';
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          after = await waClient.pupPage.evaluate(id => { const m = window.require('WAWebCollections').Msg.get(id); return m ? (m.isRevoked || m.type === 'revoked' ? 'revoked' : m.type) : 'gone'; }, payload.id).catch(() => 'unknown');
+          if (!wantEveryone || after === 'revoked') break;
+        }
         trackedMsgIds.delete(payload.id);
         automationState.messageLedger = automationState.messageLedger.filter(m => m.id !== payload.id);
         if (wantEveryone) {
@@ -463,7 +526,7 @@ const server = http.createServer((req, res) => {
         }
         const digits = String(to).replace(/\D/g, '');
         waClient.sendMessage(digits + '@c.us', text).then(sent => {
-          const sid = sent && sent.id && sent.id._serialized;
+          const sid = msgSerial(sent);
           if (sent && sent.to) resolver.learn(sent.to, digits);
           if (sid) trackedMsgIds.add(sid);
           automationState.messageLedger.unshift({ direction: 'OUTGOING', to: digits, text, timestamp, id: sid });
@@ -711,7 +774,7 @@ async function handleIncoming(msg, from) {
     if (automationState.ignoredLog.length > 5) automationState.ignoredLog.pop();
     return;
   }
-  const id = msg.id && msg.id._serialized;
+  const id = msgSerial(msg);
   if (id) { if (seenMsgIds.has(id)) return; seenMsgIds.add(id); }
   const media = await saveMediaIfAny(msg);
   const tsSec = msg.timestamp || Math.floor(Date.now() / 1000);
@@ -745,6 +808,16 @@ async function backfillTracked(reason) {
 setInterval(() => backfillTracked('timer'), 30000);
 
 
+async function seedLids(numbers) {
+  if (!waClient || automationState.wa.status !== 'READY') return;
+  for (const full of numbers.slice(0, 30)) {
+    try {
+      const res = await waClient.getContactLidAndPhone([full + '@c.us']);
+      const lid = res && res[0] && res[0].lid;
+      if (lid) resolver.learn(lid, full);
+    } catch (e) { /* best effort */ }
+  }
+}
 let waClient = null;
 let waRetries = 0;
 let restarting = false;
@@ -806,7 +879,7 @@ function startWhatsAppClient() {
     try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
     const to = await resolver.resolveNumber(msg.to, contactNumber);
     if (!isTracked(to)) return;
-    const id = msg.id && msg.id._serialized;
+    const id = msgSerial(msg);
     if (id) trackedMsgIds.add(id);
     if (id && seenMsgIds.has(id)) { return; }
     const media = await saveMediaIfAny(msg);
@@ -816,7 +889,7 @@ function startWhatsAppClient() {
     emitEvent({ kind: 'out', ...entry });
   });
   waClient.on('message_ack', (msg, ack) => {
-    const id = msg && msg.id && msg.id._serialized;
+    const id = msgSerial(msg);
     if (id && trackedMsgIds.has(id)) emitEvent({ kind: 'ack', id, ack });
   });
   waClient.on('message', async msg => {

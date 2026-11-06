@@ -8637,18 +8637,20 @@ function trackedNumbers_() {
   return [...set];
 }
 function senderPort_() { return getActiveSender_().port || 3030; }
+let bridgeMisses_ = 0;
 async function pollBridge_() {
   const port = senderPort_();
   try {
-    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1500);
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 6000);
     const r = await fetch(`http://localhost:${port}/api/status`, { cache: 'no-store', signal: ctrl.signal });
     const data = await r.json();
     try { fetch(`http://localhost:${port}/api/track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numbers: trackedNumbers_() }) }).catch(() => {}); } catch (e) {}
     const wa = (data.state && data.state.wa) || {};
     chatBridge = { status: wa.status || 'ON', number: wa.number || '', ready: wa.status === 'READY' };
+    bridgeMisses_ = 0;
     connectBridgeEvents_();
     (data.state?.messageLedger || []).forEach(item => { if (item.direction === 'INCOMING') ingestIncoming_(item); else if (item.direction === 'OUTGOING') ingestOutgoingSeen_(item); });
-  } catch (e) { chatBridge = { status: 'OFF', number: '', ready: false }; }
+  } catch (e) { bridgeMisses_ = (bridgeMisses_ || 0) + 1; if (bridgeMisses_ >= 2) chatBridge = { status: 'OFF', number: '', ready: false }; }
   document.querySelectorAll('.chat-bridge-chip').forEach(el => { el.textContent = bridgeText_(); el.dataset.state = chatBridge.ready ? 'ok' : 'off'; });
   updateChatLauncher_();
 }
@@ -8700,6 +8702,7 @@ function ingestOutgoingSeen_(item) {
   if (!lead && !chatSessions.has('N:' + digits)) return;
   const s = getSession_(lead || null, digits);
   const text = waSafeText(item.text);
+  if (item.id && threadOf_(s).some(m => m.waId === item.id)) return;
   const pending = threadOf_(s).find(m => m.direction === 'OUTGOING' && m.status === 'pending' && waSafeText(m.text) === text);
   if (pending) { updateThreadMsg_(s, pending.cid, { status: 'sent', waId: item.id, via: 'WhatsApp Web (confirmed)' }); noteChatEvent_(s, 'sent'); renderWin_(s.key); return; }
   const known = threadOf_(s).find(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && !m.waId && item.id);
@@ -8710,14 +8713,15 @@ function ingestOutgoingSeen_(item) {
   renderWin_(s.key);
 }
 function ingestIncoming_(item) {
-  const id = item.timestamp + '|' + String(item.text).slice(0, 30) + '|' + item.from;
-  if (seenIncoming_.has(id)) return; seenIncoming_.add(id);
+  const seenIncomingKey = item.id || (item.timestamp + '|' + String(item.text).slice(0, 30) + '|' + item.from);
+  if (seenIncoming_.has(seenIncomingKey)) return;
   const digits = String(item.from || '').replace(/\D/g, '');
   const lead = (crmState.leads || []).find(l => { const p = String(l.contactPhone || l.phone || '').replace(/\D/g, ''); return p && (p === digits || p.slice(-10) === digits.slice(-10)); });
   if (!lead && !chatSessions.has('N:' + digits) && !readJson_(NUM_CHAT_KEY)['N:' + digits]) return; // not a CRM contact and not a chat you opened: ignore completely
   const s = getSession_(lead || null, digits);
   const hist = threadOf_(s);
-  if (hist.some(m => (item.id && m.waId === item.id) || m.timestamp === item.timestamp || (m.direction === 'INCOMING' && m.text === item.text))) return;
+  if (hist.some(m => (item.id && m.waId === item.id) || (!item.id && m.timestamp === item.timestamp) || (m.direction === 'INCOMING' && m.text === item.text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 3000))) return;
+  seenIncoming_.add(seenIncomingKey);
   pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp, waId: item.id, media: mediaOf_(item) });
   notifyIncoming_(lead || null, item.text, digits);
 }
@@ -8847,7 +8851,9 @@ function openChatWindow(leadId, phone, opts) {
           <button type="button" class="wa-paste only-docked" title="Pop this chat out into its own floating window" onclick="popOutChat_('${s.key}')">Float</button>
           <button type="button" class="wa-paste only-floating" title="Put this chat back into the Inbox" onclick="dockChat_('${s.key}')">Inbox</button>
           <button type="button" class="wa-paste" title="Open in a new tab" onclick="openChatTab('${s.key}')">New tab</button>
-          <button type="button" class="wa-paste" title="Clear this chat in the CRM" onclick="clearChatCrm_('${s.key}')">Clear</button>
+          <button type="button" class="wa-paste" title="Fetch the latest messages from WhatsApp now" onclick="syncChatFromWhatsApp_('${s.key}', false).then(() => showCRMToast('Synced with WhatsApp.', 'sync'))">Sync</button>
+          <button type="button" class="wa-paste" title="Clear this chat in the CRM only" onclick="clearChatCrm_('${s.key}')">Clear</button>
+          <button type="button" class="wa-paste chat-end" title="Delete this whole chat in the CRM and in your WhatsApp" onclick="askDeleteChat_('${s.key}')">Delete chat</button>
           <button type="button" class="wa-paste only-floating" title="Shrink" onclick="toggleMinChat('${s.key}')">Min</button>
           <button type="button" class="wa-paste chat-end" onclick="endChat_('${s.key}')">End chat</button>
           <button type="button" class="wa-paste only-floating" title="Hide window, chat stays open" onclick="hideChatWindow('${s.key}')">X</button>
@@ -8898,7 +8904,7 @@ function openChatWindow(leadId, phone, opts) {
   if (opts && opts.full) win.classList.add('chat-win-full');
   s.unread = 0;
   renderWin_(s.key);
-  if (!(opts && opts.quiet)) { win.querySelector('[data-role="input"]').focus(); document.getElementById('crm-chat-launcher')?.classList.add('hidden'); }
+  if (!(opts && opts.quiet)) { win.querySelector('[data-role="input"]').focus(); document.getElementById('crm-chat-launcher')?.classList.add('hidden'); syncChatFromWhatsApp_(s.key, false); }
   updateChatLauncher_();
   pollBridge_();
 }
@@ -9075,7 +9081,9 @@ async function winSend_(key) {
       const r = await fetch(`http://localhost:${sender.port || 3030}/api/send-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, text, leadId: s.leadId }) });
       const j = await r.json().catch(() => ({}));
       if (r.ok && j.status === 'SENT') {
-        pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text, status: 'sent', waId: j.id });
+        const already = j.id && threadOf_(s).find(x => x.waId === j.id);
+        if (already) updateThreadMsg_(s, already.cid, { status: already.status === 'pending' ? 'sent' : (already.status || 'sent'), via: 'WhatsApp (linked)', author: chatUser_() });
+        else pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text, status: 'sent', waId: j.id });
         noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
         showCRMToast('Sent. Delivery ticks update live.', 'check_circle');
         return;
@@ -9658,6 +9666,7 @@ function selectInboxChat_(key) {
   inboxSel = key;
   const s = chatSessions.get(key); if (s) s.unread = 0;
   renderWin_(key); refreshInboxList_(); updateChatLauncher_();
+  syncChatFromWhatsApp_(key, false);
 }
 function inboxNewChat_() {
   const id = document.getElementById('inbox-new-client').value;
@@ -9684,7 +9693,7 @@ function askDeleteMsg_(key, cid) {
   const mine = m.direction === 'OUTGOING';
   let modal = document.getElementById('crm-del-modal');
   if (!modal) { modal = document.createElement('div'); modal.id = 'crm-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
-  const canWa = !!m.waId && chatBridge.ready;
+  const canWa = chatBridge.ready && (!!m.waId || !!(m.text && s.phone));
   const what = canWa
     ? (mine ? 'It will be deleted for everyone in WhatsApp and removed from the CRM. The client will see "This message was deleted". If WhatsApp refuses (for example the message is too old), nothing is deleted and you are told why. This cannot be undone.' : 'It will be removed from the CRM and from your WhatsApp. The client still keeps their own copy. This cannot be undone.')
     : 'It will be removed from the CRM only. ' + (m.waId ? 'WhatsApp is not linked right now, so it stays in WhatsApp.' : 'This message was not sent through the linked bridge, so there is nothing to delete in WhatsApp.');
@@ -9703,9 +9712,9 @@ async function deleteMessage_(key, cid, meOnly) {
   const s = chatSessions.get(key); if (!s) return;
   const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
   let waNote = 'Removed from the CRM only.';
-  if (m.waId && chatBridge.ready) {
+  if (m.waId || (m.text && s.phone && chatBridge.ready)) {
     try {
-      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, everyone: m.direction === 'OUTGOING', allowMeOnly: !!meOnly }) });
+      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, number: s.phone, text: m.text, ts: Math.round(new Date(m.timestamp).getTime() / 1000), fromMe: m.direction === 'OUTGOING', everyone: m.direction === 'OUTGOING', allowMeOnly: !!meOnly }) });
       const j = await r.json().catch(() => ({}));
       if (r.status === 409) { askDeleteFallback_(key, cid, j.error); return; }   // WhatsApp will not delete it for the client: ask before doing less
       if (r.ok && j.success) {
@@ -9731,6 +9740,82 @@ function askDeleteFallback_(key, cid, reason) {
     </div>`;
   modal.classList.remove('hidden'); modal.classList.add('flex');
 }
+
+/* ---------- keep a chat identical to the real WhatsApp chat ---------- */
+async function syncChatFromWhatsApp_(key, quiet) {
+  const s = chatSessions.get(key); if (!s || !s.phone || !chatBridge.ready) return;
+  const nowMs = Date.now();
+  if (s._syncing || (quiet && nowMs - (s._syncAt || 0) < 12000)) return;
+  s._syncing = true; s._syncAt = nowMs;
+  try {
+    const r = await fetch(`http://localhost:${senderPort_()}/api/chat-history?number=${encodeURIComponent(s.phone)}`, { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json(); let changed = false; const newIncoming = [];
+    const ackStatus = a => a >= 3 ? 'read' : a === 2 ? 'delivered' : 'sent';
+    for (const m of (j.messages || [])) {
+      const thread = threadOf_(s);
+      if (m.type === 'revoked') { const mine = thread.find(x => x.waId === m.id); if (mine) { removeThreadMsg_(s, mine.cid); changed = true; } continue; }
+      if (!m.id) continue;
+      const dir = m.fromMe ? 'OUTGOING' : 'INCOMING', t = new Date(m.timestamp).getTime();
+      const same = x => x.waId === m.id || (x.direction === dir && waSafeText(x.text) === waSafeText(m.text) && Math.abs(new Date(x.timestamp) - t) < 6000);
+      const x = thread.find(same);
+      if (x) {
+        if (!x.waId) { updateThreadMsg_(s, x.cid, { waId: m.id }); changed = true; }
+        if (m.fromMe) {
+          if (x.status === 'pending') { updateThreadMsg_(s, x.cid, { status: ackStatus(m.ack), via: 'WhatsApp Web (confirmed)' }); noteChatEvent_(s, 'sent'); changed = true; }
+          else if (m.ack >= 1 && ackStatus(m.ack) !== x.status) { updateThreadMsg_(s, x.cid, { status: ackStatus(m.ack) }); changed = true; }
+        }
+        continue;
+      }
+      pushThread_(s, { direction: dir, author: m.fromMe ? chatUser_() : s.name, via: m.fromMe ? 'WhatsApp (synced)' : undefined, text: (m.hasMedia && !m.text) ? '(picture or file: open it in WhatsApp)' : m.text, timestamp: m.timestamp, waId: m.id, status: m.fromMe ? ackStatus(m.ack) : undefined });
+      changed = true; if (!m.fromMe) newIncoming.push(m.text);
+    }
+    if (changed) { renderWin_(key); try { refreshInboxList_(); } catch (e) {} }
+    if (newIncoming.length && quiet !== 'silent') { s.unread += newIncoming.length; noteChatEvent_(s, 'received'); showCRMToast(`New reply from ${s.name}: ${String(newIncoming[newIncoming.length - 1] || '(picture or file)').slice(0, 60)}`, 'chat'); }
+  } catch (e) { /* bridge not reachable: the events and the next round will catch up */ }
+  finally { s._syncing = false; }
+}
+setInterval(() => {
+  if (document.hidden || !chatBridge.ready) return;
+  chatSessions.forEach((s, k) => { const w = document.getElementById(winId_(k)); if (w && !w.classList.contains('chat-hidden')) syncChatFromWhatsApp_(k, true); });
+}, 20000);
+
+/* ---------- delete a whole chat ---------- */
+function clearChatCore_(s) {
+  if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); if (l) { l.chatHistory = []; saveToLocalCache(); } }
+  else { const st = readJson_(NUM_CHAT_KEY); delete st[s.key]; try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(st)); } catch (e) {} }
+  try { const st2 = readJson_(CHAT_STORE_KEY); if (s.leadId) delete st2[s.leadId]; localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(st2)); } catch (e) {}
+}
+function askDeleteChat_(key) {
+  const s = chatSessions.get(key); if (!s) return;
+  let modal = document.getElementById('crm-del-modal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'crm-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
+  const canWa = chatBridge.ready && !!s.phone;
+  modal.innerHTML = `
+    <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-del-modal')"></div>
+    <div class="relative w-full max-w-md neo-modal p-6 z-10 flex flex-col gap-3">
+      <h3 class="text-lg font-bold">Delete the whole chat with ${mailEsc_(s.name)}?</h3>
+      <p class="wa-help">${canWa ? 'It is removed from the CRM and from your WhatsApp. The client keeps their own copy. This cannot be undone.' : 'It is removed from the CRM only (WhatsApp is not linked, so it stays in WhatsApp). This cannot be undone.'}</p>
+      <div class="flex gap-2 justify-end"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Cancel</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteChatNow_('${key}')">Delete chat</button></div>
+    </div>`;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+async function deleteChatNow_(key) {
+  closeModal('crm-del-modal');
+  const s = chatSessions.get(key); if (!s) return;
+  let note = 'Chat deleted from the CRM.';
+  if (chatBridge.ready && s.phone) {
+    try {
+      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number: s.phone }) });
+      const j = await r.json().catch(() => ({}));
+      if (!(r.ok && j.success)) { showCRMToast('WhatsApp did not delete the chat (' + (j.error || 'unknown reason') + '). Nothing was deleted.', 'warning'); return; }
+      note = 'Chat deleted from the CRM and your WhatsApp. The client keeps their copy.';
+    } catch (e) { showCRMToast('Could not reach the bridge, so nothing was deleted.', 'warning'); return; }
+  }
+  clearChatCore_(s); renderWin_(key); try { refreshInboxList_(); } catch (e) {}
+  showCRMToast(note, 'delete');
+}
+
 function clearChatCrm_(key) {
   const s = chatSessions.get(key); if (!s) return;
   if (!confirm('Clear all messages of this chat from the CRM on this computer? WhatsApp is not touched.')) return;
