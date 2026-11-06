@@ -8666,6 +8666,22 @@ function effectiveSendMode_() { const m = loadWaPrefs_().sendMode; if (m === 'br
 function showWaWindow_(show) { try { fetch(`http://localhost:${senderPort_()}/api/window`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ show: !!show }) }).catch(() => {}); } catch (e) {} }
 function setSendMode(v) { v = (v === 'bridge' || v === 'window') ? v : 'official'; saveWaPrefs_({ sendMode: v }); showWaWindow_(v === 'window'); showCRMToast(v === 'bridge' ? 'Sending automatically through the bridge.' : v === 'window' ? 'Messages are placed in the original WhatsApp window. You press Enter there.' : 'Sending with official WhatsApp Web (you press send).', 'check_circle'); }
 
+/* ---------- start the bridge from the CRM (needs install-bridge-launcher.bat run once) ---------- */
+async function startBridgeFromCrm_() {
+  await pollBridge_();
+  if (chatBridge.ready) { showCRMToast('The bridge is already running and linked.', 'check_circle'); return; }
+  if (chatBridge.status && chatBridge.status !== 'OFF') { showCRMToast('The bridge is running (' + chatBridge.status + '). Press Link WhatsApp if it asks for a scan.', 'info'); return; }
+  showCRMToast('Starting the bridge...', 'play_circle');
+  try { const f = document.createElement('iframe'); f.style.display = 'none'; f.src = 'berichbridge://start'; document.body.appendChild(f); setTimeout(() => f.remove(), 4000); } catch (e) { location.href = 'berichbridge://start'; }
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 3000));
+    await pollBridge_();
+    if (chatBridge.ready) { showCRMToast('Bridge started and linked.', 'check_circle'); return; }
+    if (chatBridge.status && chatBridge.status !== 'OFF') { showCRMToast(chatBridge.status === 'QR' ? 'Bridge started. Press Link WhatsApp and scan the code.' : 'Bridge started (' + chatBridge.status + ').', 'info'); return; }
+  }
+  showCRMToast('Could not start it from here. Run install-bridge-launcher.bat once (in the project folder), or run start-whatsapp-bridge.bat by hand.', 'warning');
+}
+
 /* ---------- bridge status and incoming messages ---------- */
 function trackedNumbers_() {
   const set = new Set();
@@ -8841,6 +8857,7 @@ function ensureChatLayer_() {
       <div class="flex flex-wrap gap-1.5">
         <button type="button" class="wa-chip wa-chip-accent" onclick="endAllChats()">End all chats</button>
         <button type="button" class="wa-chip" onclick="enableReplyAlerts()">Turn on alerts</button>
+        <button type="button" class="wa-chip" onclick="startBridgeFromCrm_()">Start bridge</button>
         <button type="button" class="wa-chip" onclick="openLinkWhatsApp()">Link WhatsApp</button>
         <button type="button" class="wa-chip" onclick="openGmailInbox()">Open Gmail</button>
         <button type="button" class="wa-chip" onclick="exportMyChats()">Back up my chats</button>
@@ -9131,7 +9148,7 @@ async function winSend_(key) {
   if (mode === 'bridge' && !chatBridge.ready) {
     // You chose automatic sending: never jump to a new WhatsApp tab on your own. Check once, then tell you and keep your text.
     await pollBridge_();
-    if (!chatBridge.ready) { showCRMToast('The bridge is off, so nothing was sent. Run start-whatsapp-bridge.bat, then press Send again. (Or choose Official WhatsApp in "Send with".)', 'warning'); return; }
+    if (!chatBridge.ready) { showCRMToast('The bridge is off, so nothing was sent. Press Start bridge (or run start-whatsapp-bridge.bat), then press Send again. Or choose Official WhatsApp in "Send with".', 'warning'); return; }
   }
   if (mode === 'window' && chatBridge.ready) { await winDraft_(key); input.value = ''; renderWin_(key); return; }
   if (mode === 'bridge' && chatBridge.ready) {
@@ -9671,7 +9688,8 @@ function ensureInbox_() {
               <option value="official">Official WhatsApp Web (I press send)</option>
             </select>
             <div class="flex flex-wrap gap-1.5">
-              <button type="button" class="wa-chip" onclick="openLinkWhatsApp()">Link WhatsApp</button>
+              <button type="button" class="wa-chip" onclick="startBridgeFromCrm_()">Start bridge</button>
+        <button type="button" class="wa-chip" onclick="openLinkWhatsApp()">Link WhatsApp</button>
               <button type="button" class="wa-chip" onclick="openGmailInbox()">Open Gmail</button>
               <button type="button" class="wa-chip" onclick="enableReplyAlerts()">Turn on alerts</button>
               <button type="button" class="wa-chip" onclick="exportMyChats()">Back up my chats</button>

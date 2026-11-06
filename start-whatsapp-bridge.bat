@@ -6,6 +6,9 @@ echo ================================================================
 echo   beRich Creative Studio - WhatsApp Bridge (runs on THIS computer)
 echo ================================================================
 echo.
+if /i "%~1"=="quiet" (
+  netstat -ano | findstr ":3030" | findstr LISTENING >nul && exit /b 0
+)
 echo Closing any older bridge that is still running...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3030" ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*wwebjs_auth*' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>&1
@@ -19,7 +22,7 @@ echo Starting the bridge. A page opens to link WhatsApp with your phone.
 echo Keep this window open while you chat from the CRM.
 echo.
 timeout /t 2 /nobreak >nul
-start http://localhost:3030/link
+if /i not "%~1"=="quiet" start http://localhost:3030/link
 :run
 node whatsapp-automation-service.js
 echo.

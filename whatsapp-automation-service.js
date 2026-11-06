@@ -991,7 +991,7 @@ function patchWwebjsMedia() {
     console.log('[beRich Bridge] Applied the picture-sending fix to whatsapp-web.js');
   } catch (e) { console.log('[beRich Bridge] Picture fix not applied: ' + e.message); }
 }
-const PINNED_WA_VERSION = process.env.WA_WEB_VERSION !== undefined ? process.env.WA_WEB_VERSION : (fs.existsSync(path.join(__dirname, '.wwebjs_cache', '2.3000.1053340710.html')) ? '2.3000.1053340710' : '');
+const PINNED_WA_VERSION = process.env.WA_WEB_VERSION || ''; // empty = use the live WhatsApp Web with whatsapp-web.js 2.x (the 1.x library cannot start on today's WhatsApp Web)
 function startWhatsAppClient() {
   patchWwebjsMedia();
   if (process.env.NO_WA) { automationState.wa.status = 'DISABLED_FOR_TEST'; return; }
@@ -1008,7 +1008,7 @@ function startWhatsAppClient() {
   waClient = new Client({
     authStrategy: new LocalAuth({ dataPath: path.join(__dirname, '.wwebjs_auth') }),
     // Pin the WhatsApp Web build that is known to work with this library. WhatsApp ships new builds without warning and a new build can break the bridge (it did on 2026-11-06 09:18).
-    ...(PINNED_WA_VERSION ? { webVersion: PINNED_WA_VERSION, webVersionCache: { type: 'local', path: path.join(__dirname, '.wwebjs_cache') } } : {}),
+    ...(PINNED_WA_VERSION ? { webVersion: PINNED_WA_VERSION, webVersionCache: { type: 'local', path: path.join(__dirname, '.wwebjs_cache') } } : { webVersionCache: { type: 'none' } }),
     deviceName: 'beRich CRM (' + (process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Mac' : 'Linux') + ')',
     browserName: 'Chrome',
     puppeteer: { headless: !!process.env.WA_HEADLESS, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800', ...(process.env.WA_ONSCREEN ? [] : ['--window-position=-3000,-3000', '--start-minimized'])] } // runs out of sight on this computer; set WA_SHOW=1 to see it
