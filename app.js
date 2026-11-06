@@ -8416,7 +8416,19 @@ function persistChats_() {
     localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(store));
   } catch (e) {}
 }
+function migrateNumChatKeys_() {
+  // chats opened with a 10-digit number were stored under N:<10 digits>; the full number (country code) is the key now
+  try {
+    const st = readJson_(NUM_CHAT_KEY); let moved = false;
+    Object.keys(st).forEach(k => {
+      const nk = 'N:' + cleanWhatsAppPhone(k.replace(/^N:/, ''));
+      if (nk !== k && nk !== 'N:') { st[nk] = mergeChats_(st[nk], st[k]); delete st[k]; moved = true; }
+    });
+    if (moved) localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(st));
+  } catch (e) {}
+}
 function rehydrateChats_() {
+  migrateNumChatKeys_();
   const store = readJson_(CHAT_STORE_KEY);
   (crmState.leads || []).forEach(l => { if (store[l.id]) l.chatHistory = mergeChats_(l.chatHistory, store[l.id]); });
 }
@@ -9668,6 +9680,7 @@ function refreshInboxList_() {
   }).join('') || '<p class="wa-help" style="padding:8px">No chats match.</p>';
 }
 function selectInboxChat_(key) {
+  if (String(key).startsWith('N:')) key = 'N:' + cleanWhatsAppPhone(String(key).slice(2));
   ensureInbox_();
   if (!inboxOpen_()) inboxEl_().classList.remove('hidden');
   let win = document.getElementById(winId_(key));
