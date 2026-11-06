@@ -7842,10 +7842,15 @@ function openApiSettingsModal() {
   const ghOwnerEl = document.getElementById('cfg-gh-owner');
   const ghRepoEl = document.getElementById('cfg-gh-repo');
   const ghPathEl = document.getElementById('cfg-gh-path');
-  if (ghTokenEl) ghTokenEl.value = ghCfg.token || '';
-  if (ghOwnerEl) ghOwnerEl.value = ghCfg.owner || DEFAULT_GITHUB_CONFIG.owner;
-  if (ghRepoEl) ghRepoEl.value = ghCfg.repo || DEFAULT_GITHUB_CONFIG.repo;
-  if (ghPathEl) ghPathEl.value = ghCfg.path || DEFAULT_GITHUB_CONFIG.path;
+  // Only Koushik sees the sync key, the database location and the Apps Script URL. Everyone else sees a mask and cannot read or copy them.
+  const adminView = getActiveStudioUser().trim().toLowerCase() === 'koushik';
+  const mask = v => (adminView ? (v || '') : (v ? SECRET_MASK_ : ''));
+  const urlEl = document.getElementById('crm-api-url-input');
+  if (urlEl) { urlEl.type = adminView ? 'url' : 'password'; urlEl.value = mask(crmState.apiUrl || DEFAULT_WEB_APP_URL); urlEl.autocomplete = 'off'; urlEl.setAttribute('data-masked', adminView ? '' : '1'); }
+  if (ghTokenEl) ghTokenEl.value = mask(ghCfg.token);
+  if (ghOwnerEl) { ghOwnerEl.type = adminView ? 'text' : 'password'; ghOwnerEl.value = mask(ghCfg.owner || DEFAULT_GITHUB_CONFIG.owner); }
+  if (ghRepoEl) { ghRepoEl.type = adminView ? 'text' : 'password'; ghRepoEl.value = mask(ghCfg.repo || DEFAULT_GITHUB_CONFIG.repo); }
+  if (ghPathEl) { ghPathEl.type = adminView ? 'text' : 'password'; ghPathEl.value = mask(ghCfg.path || DEFAULT_GITHUB_CONFIG.path); }
 
   for (let i = 0; i < 10; i++) {
     const slotNum = i + 1;
@@ -7874,8 +7879,10 @@ function openApiSettingsModal() {
   }
 }
 
+const SECRET_MASK_ = '•••••••• (saved, hidden)';
 function savePartnerAndApiSettings() {
-  const url = document.getElementById('crm-api-url-input').value.trim() || DEFAULT_WEB_APP_URL;
+  const unmask = (el, current) => { const v = el ? el.value.trim() : ''; return v === SECRET_MASK_ ? (current || '') : v; }; // untouched mask = keep what is saved
+  const url = unmask(document.getElementById('crm-api-url-input'), crmState.apiUrl) || DEFAULT_WEB_APP_URL;
   crmState.apiUrl = url;
   localStorage.setItem(STORAGE_KEY_API_URL, url);
 
@@ -7885,10 +7892,10 @@ function savePartnerAndApiSettings() {
   const ghPathEl = document.getElementById('cfg-gh-path');
   crmState.githubConfig = {
     ...crmState.githubConfig,
-    token: ghTokenEl ? ghTokenEl.value.trim() : crmState.githubConfig.token,
-    owner: (ghOwnerEl ? ghOwnerEl.value.trim() : '') || DEFAULT_GITHUB_CONFIG.owner,
-    repo: (ghRepoEl ? ghRepoEl.value.trim() : '') || DEFAULT_GITHUB_CONFIG.repo,
-    path: ((ghPathEl ? ghPathEl.value.trim() : '') || DEFAULT_GITHUB_CONFIG.path).replace(/^\/+/, ''),
+    token: ghTokenEl ? unmask(ghTokenEl, crmState.githubConfig.token) : crmState.githubConfig.token,
+    owner: unmask(ghOwnerEl, crmState.githubConfig.owner) || DEFAULT_GITHUB_CONFIG.owner,
+    repo: unmask(ghRepoEl, crmState.githubConfig.repo) || DEFAULT_GITHUB_CONFIG.repo,
+    path: (unmask(ghPathEl, crmState.githubConfig.path) || DEFAULT_GITHUB_CONFIG.path).replace(/^\/+/, ''),
     branch: crmState.githubConfig.branch || 'main'
   };
   saveGitHubConfig();
