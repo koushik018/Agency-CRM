@@ -1053,7 +1053,7 @@ function showLoginDbKeySetup() {
   const tokenInput = document.getElementById('login-db-token-input');
   if (tokenInput) {
     const curToken = (crmState.githubConfig && crmState.githubConfig.token) || '';
-    tokenInput.value = curToken;
+    tokenInput.value = (getActiveStudioUser().trim().toLowerCase() === 'koushik') ? curToken : ''; // never show a saved key to a partner
     setTimeout(() => tokenInput.focus(), 100);
   }
 
@@ -7293,7 +7293,7 @@ function injectSharedModals() {
         </div>
 
         <!-- Free GitHub JSON Database Sync Configuration (Real-Time Multi-Device State) -->
-        <div class="p-4 rounded-[20px] bg-[#13131C] flex flex-col gap-3 border border-teal-400/20">
+        <div id="admin-db-section" class="p-4 rounded-[20px] bg-[#13131C] flex flex-col gap-3 border border-teal-400/20">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-[#34D399] animate-pulse"></span>
@@ -7357,19 +7357,19 @@ function injectSharedModals() {
         </div>
 
         <!-- Deployed Google Apps Script Web App URL (Secondary Backup) -->
-        <div class="flex flex-col gap-1">
+        <div id="admin-api-section" class="flex flex-col gap-1">
           <label class="text-[10px] uppercase tracking-[0.14em] text-[#8E92A4] font-semibold">Deployed Google Apps Script Web App URL (Optional Secondary Backup)</label>
           <input id="crm-api-url-input" type="url" value="${escapeHtml(crmState.apiUrl)}"
             class="h-10 px-4 rounded-full bg-[#12121A] text-white font-label-code text-xs focus:outline-none"/>
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
-          <button type="button" onclick="wipeAllLocalDataCleanSlate()" class="px-4 py-2 rounded-full bg-[#4C1323] text-[#FF6B8B] text-xs font-semibold">Wipe Local Data (Clean Slate)</button>
+          <button type="button" id="admin-wipe-btn" onclick="wipeAllLocalDataCleanSlate()" class="px-4 py-2 rounded-full bg-[#4C1323] text-[#FF6B8B] text-xs font-semibold">Wipe Local Data (Clean Slate)</button>
           <div class="flex items-center gap-2.5">
             <button type="button" onclick="closeModal('crm-api-modal')" class="px-4 py-2 rounded-full bg-[#232433] text-[#B8BCCF] hover:text-white text-xs font-semibold">Close</button>
             <button type="button" onclick="savePartnerAndApiSettings()" class="px-5 py-2.5 rounded-full bg-[#34D399] hover:bg-[#26FF9A] text-[#051B11] text-xs font-bold flex items-center gap-1.5 shadow-[0_6px_20px_rgba(0,255,135,0.3)]">
               <span class="material-symbols-outlined text-[16px]">save</span>
-              <span>Save Partners, GitHub DB &amp; Sync</span>
+              <span>Save settings</span>
             </button>
           </div>
         </div>
@@ -7844,6 +7844,8 @@ function openApiSettingsModal() {
   const ghPathEl = document.getElementById('cfg-gh-path');
   // Only Koushik sees the sync key, the database location and the Apps Script URL. Everyone else sees a mask and cannot read or copy them.
   const adminView = getActiveStudioUser().trim().toLowerCase() === 'koushik';
+  // Partners do not even see the sync section, the Apps Script box or the wipe button. They enter the key once at login, then nothing more.
+  ['admin-db-section', 'admin-api-section', 'admin-wipe-btn'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', !adminView); });
   const mask = v => (adminView ? (v || '') : (v ? SECRET_MASK_ : ''));
   const urlEl = document.getElementById('crm-api-url-input');
   if (urlEl) { urlEl.type = adminView ? 'url' : 'password'; urlEl.value = mask(crmState.apiUrl || DEFAULT_WEB_APP_URL); urlEl.autocomplete = 'off'; urlEl.setAttribute('data-masked', adminView ? '' : '1'); }
