@@ -8691,7 +8691,11 @@ function bridgeText_() {
   return `Bridge: ${chatBridge.status}`;
 }
 let bridgeES = null, bridgeESPort = 0;
+let trackAt_ = 0;
 function syncTracking_() {
+  // failsafe: never hammer a bridge that is off. At most one call per 5 s, one per 60 s while it is down.
+  const now = Date.now(), gap = chatBridge && chatBridge.status === 'OFF' ? 60000 : 5000;
+  if (now - trackAt_ < gap) return; trackAt_ = now;
   try { fetch(`http://localhost:${senderPort_()}/api/track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numbers: trackedNumbers_() }) }).catch(() => {}); } catch (e) {}
 }
 setInterval(syncTracking_, 20000);

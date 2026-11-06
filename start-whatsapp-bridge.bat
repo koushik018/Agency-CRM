@@ -21,5 +21,9 @@ echo.
 timeout /t 2 /nobreak >nul
 set WA_SHOW=1
 start http://localhost:3030/link
+:run
 node whatsapp-automation-service.js
-pause
+echo.
+echo The bridge stopped. Starting it again in 5 seconds (close this window to stop).
+timeout /t 5 /nobreak >nul
+goto run
