@@ -989,7 +989,7 @@ function startWhatsAppClient() {
     ...(PINNED_WA_VERSION ? { webVersion: PINNED_WA_VERSION, webVersionCache: { type: 'local', path: path.join(__dirname, '.wwebjs_cache') } } : {}),
     deviceName: 'beRich CRM (' + (process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Mac' : 'Linux') + ')',
     browserName: 'Chrome',
-    puppeteer: { headless: !process.env.WA_SHOW, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800'] }
+    puppeteer: { headless: !!process.env.WA_HEADLESS, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800', '--window-position=-3000,-3000', '--start-minimized'] } // runs out of sight on this computer; set WA_SHOW=1 to see it
   });
   const mine = waClient;
   // WhatsApp Web sometimes renames the page module the library uses to set the linked-device name: that must never stop the bridge from starting
