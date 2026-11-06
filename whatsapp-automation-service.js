@@ -24,6 +24,13 @@ const PORT = process.env.PORT || 3030;
 // Privacy: the bridge keeps ONLY messages from numbers the CRM has told it to track (saved clients and chats you opened).
 // Everything else on this phone (family, friends, groups) is dropped the moment it arrives and is never stored or shown.
 let trackedNumbers = new Set();
+const sseClients = new Set();
+const trackedMsgIds = new Set();
+function emitEvent(ev) {
+  const line = 'data: ' + JSON.stringify(ev) + '\n\n';
+  sseClients.forEach(c => { try { c.write(line); } catch (e) { sseClients.delete(c); } });
+}
+function emitStatus() { emitEvent({ kind: 'status', status: automationState.wa.status, number: automationState.wa.number }); }
 const last10 = n => String(n || '').replace(/\D/g, '').slice(-10);
 const isTracked = n => last10(n).length >= 7 && trackedNumbers.has(last10(n));
 const ALLOWED_ORIGINS = [
@@ -200,10 +207,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Live stream to the CRM: new replies, messages you sent, delivery ticks and link status. No waiting for a poll.
+  if (url.pathname === '/api/events' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
+    res.write('retry: 2000\n\n');
+    sseClients.add(res);
+    res.write('data: ' + JSON.stringify({ kind: 'status', status: automationState.wa.status, number: automationState.wa.number }) + '\n\n');
+    const ka = setInterval(() => { try { res.write(': keep-alive\n\n'); } catch (e) {} }, 20000);
+    req.on('close', () => { clearInterval(ka); sseClients.delete(res); });
+    return;
+  }
+
+  // Restart the WhatsApp link (a stale QR code, or the WhatsApp window was closed).
+  if (url.pathname === '/api/restart' && req.method === 'POST') {
+    restartWhatsApp('Restarted from the CRM');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
+
   // The QR code for linking, shown inside the CRM. Only the CRM page (checked above) can read it.
   if (url.pathname === '/api/qr' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ status: automationState.wa.status, number: automationState.wa.number, error: automationState.wa.error, qr: automationState.wa.status === 'QR' ? automationState.wa.qr : '' }));
+    res.end(JSON.stringify({ status: automationState.wa.status, number: automationState.wa.number, error: automationState.wa.error, qr: automationState.wa.status === 'QR' ? automationState.wa.qr : '', qrAgeSec: automationState.wa.qrAt ? Math.round((Date.now() - automationState.wa.qrAt) / 1000) : null }));
     return;
   }
 
@@ -300,11 +326,13 @@ const server = http.createServer((req, res) => {
           return;
         }
         const digits = String(to).replace(/\D/g, '');
-        waClient.sendMessage(digits + '@c.us', text).then(() => {
-          automationState.messageLedger.unshift({ direction: 'OUTGOING', to: digits, text, timestamp });
+        waClient.sendMessage(digits + '@c.us', text).then(sent => {
+          const sid = sent && sent.id && sent.id._serialized;
+          if (sid) trackedMsgIds.add(sid);
+          automationState.messageLedger.unshift({ direction: 'OUTGOING', to: digits, text, timestamp, id: sid });
           if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, status: 'SENT', to: digits, timestamp }));
+          res.end(JSON.stringify({ success: true, status: 'SENT', to: digits, timestamp, id: sid }));
         }).catch(err => {
           res.writeHead(502, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: false, status: 'FAILED', error: err.message }));
@@ -539,6 +567,27 @@ const server = http.createServer((req, res) => {
 // ---------------------------------------------------------------------------
 let waClient = null;
 let waRetries = 0;
+let restarting = false;
+async function restartWhatsApp(reason) {
+  if (restarting) return;
+  restarting = true;
+  automationState.wa = { status: 'RESTARTING', number: '', qr: '', error: String(reason || '') };
+  emitStatus();
+  console.log('[beRich Bridge] Restarting WhatsApp: ' + reason);
+  try { if (waClient) await waClient.destroy(); } catch (e) {}
+  waClient = null; waRetries = 0;
+  setTimeout(() => { restarting = false; startWhatsAppClient(); }, 2500);
+}
+// If the WhatsApp window is closed or crashes, the QR code on screen is dead. Notice it and start again.
+setInterval(() => {
+  try {
+    if (!waClient || restarting || process.env.NO_WA) return;
+    const st = automationState.wa.status;
+    if (!['QR', 'READY', 'STARTING'].includes(st)) return;
+    const br = waClient.pupBrowser, pg = waClient.pupPage;
+    if ((br && !br.isConnected()) || (pg && pg.isClosed())) restartWhatsApp('The WhatsApp window was closed');
+  } catch (e) {}
+}, 5000);
 function startWhatsAppClient() {
   if (process.env.NO_WA) { automationState.wa.status = 'DISABLED_FOR_TEST'; return; }
   let Client, LocalAuth, QR;
@@ -558,7 +607,7 @@ function startWhatsAppClient() {
     puppeteer: { headless: !process.env.WA_SHOW, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800'] }
   });
   waClient.on('qr', async qr => {
-    try { automationState.wa.qr = await QR.toDataURL(qr); automationState.wa.status = 'QR'; } catch (e) { automationState.wa.error = e.message; }
+    try { automationState.wa.qr = await QR.toDataURL(qr); automationState.wa.qrAt = Date.now(); automationState.wa.status = 'QR'; emitStatus(); } catch (e) { automationState.wa.error = e.message; }
     console.log('[beRich Bridge] Scan the QR code at http://localhost:' + PORT + '/link');
   });
   waClient.on('ready', () => {
@@ -566,17 +615,26 @@ function startWhatsAppClient() {
     waRetries = 0;
     automationState.wa = { status: 'READY', number: num, qr: '', error: '' };
     automationState.pairedNumber = num;
+    emitStatus();
     console.log('[beRich Bridge] WhatsApp linked as +' + num);
   });
   waClient.on('auth_failure', m => { automationState.wa = { status: 'AUTH_FAILED', number: '', qr: '', error: String(m) }; });
-  waClient.on('disconnected', r => { automationState.wa = { status: 'DISCONNECTED', number: '', qr: '', error: String(r) }; });
+  waClient.on('disconnected', r => { automationState.wa = { status: 'DISCONNECTED', number: '', qr: '', error: String(r) }; emitStatus(); restartWhatsApp('WhatsApp disconnected: ' + r); });
   waClient.on('message_create', async msg => {
     if (!msg.fromMe || msg.isStatus || String(msg.to).includes('@g.us')) return;
     let to = String(msg.to).replace(/@.*/, '');
     try { const c = await msg.getChat(); const ct = c && (await c.getContact()); if (ct && ct.number) to = String(ct.number).replace(/\D/g, ''); } catch (e) {}
     if (!isTracked(to)) return;
-    automationState.messageLedger.unshift({ direction: 'OUTGOING', to, text: msg.body || '', timestamp: new Date().toISOString() });
+    const id = msg.id && msg.id._serialized;
+    if (id) trackedMsgIds.add(id);
+    const entry = { direction: 'OUTGOING', to, text: msg.body || '', timestamp: new Date().toISOString(), id };
+    automationState.messageLedger.unshift(entry);
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
+    emitEvent({ kind: 'out', ...entry });
+  });
+  waClient.on('message_ack', (msg, ack) => {
+    const id = msg && msg.id && msg.id._serialized;
+    if (id && trackedMsgIds.has(id)) emitEvent({ kind: 'ack', id, ack });
   });
   waClient.on('message', async msg => {
     if (msg.fromMe || msg.isStatus || String(msg.from).includes('@g.us')) return; // ignore own, status and group messages
@@ -584,8 +642,10 @@ function startWhatsAppClient() {
     let from = String(msg.from).replace(/@.*/, '');
     try { const c = await msg.getContact(); if (c && c.number) from = String(c.number).replace(/\D/g, ''); } catch (e) {}
     if (!isTracked(from)) return; // not a CRM contact: discard immediately
-    automationState.messageLedger.unshift({ direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString() });
+    const entry = { direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString() };
+    automationState.messageLedger.unshift(entry);
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
+    emitEvent({ kind: 'in', ...entry });
   });
   waClient.initialize().catch(e => {
     automationState.wa = { status: 'ERROR', number: '', qr: '', error: e.message };

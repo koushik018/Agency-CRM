@@ -2039,3 +2039,12 @@ details.wa-collapsible[open] > summary { margin-bottom: 8px; }
 .chat-more > summary { font-size: 14px; }
 .chat-more-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .chat-win .chat-thread { max-height: 300px; }
+
+/* v63: honest delivery status */
+.wa-msg-status { font-size: 12px; margin-top: 4px; opacity: 0.85; text-align: right; }
+.wa-msg-status.wa-read { color: #2563EB; font-weight: 700; opacity: 1; }
+.wa-msg-status.wa-pending { text-align: left; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: #92400E; font-weight: 600; opacity: 1; }
+[data-theme="dark"] .wa-msg-status.wa-pending { color: #FBBF24; }
+[data-theme="dark"] .wa-msg-status.wa-read { color: #7DD3FC; }
+.wa-pending-btns { display: inline-flex; gap: 6px; }
+.wa-pending-btns button { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 9999px; border: 1.5px solid currentColor; background: transparent; color: inherit; cursor: pointer; }

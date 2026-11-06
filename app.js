@@ -8508,6 +8508,7 @@ function threadOf_(s) {
   const store = readJson_(NUM_CHAT_KEY); return store[s.key] || [];
 }
 function pushThread_(s, msg) {
+  msg.cid = msg.cid || 'M' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   msg.owner = chatUser_();
   msg.timestamp = msg.timestamp || new Date().toISOString();
   if (s.leadId) {
@@ -8521,6 +8522,24 @@ function pushThread_(s, msg) {
     const store = readJson_(NUM_CHAT_KEY); store[s.key] = mergeChats_(store[s.key], [msg]);
     try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {}
   }
+}
+
+function updateThreadMsg_(s, cid, patch) {
+  if (s.leadId) { const m = threadOf_(s).find(x => x.cid === cid); if (m) { Object.assign(m, patch); saveToLocalCache(); } return m || null; }
+  const store = readJson_(NUM_CHAT_KEY); const m = (store[s.key] || []).find(x => x.cid === cid);
+  if (m) { Object.assign(m, patch); try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {} }
+  return m || null;
+}
+function removeThreadMsg_(s, cid) {
+  if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); if (l && Array.isArray(l.chatHistory)) { l.chatHistory = l.chatHistory.filter(x => x.cid !== cid); saveToLocalCache(); } return; }
+  const store = readJson_(NUM_CHAT_KEY); store[s.key] = (store[s.key] || []).filter(x => x.cid !== cid);
+  try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {}
+}
+function updateByWaId_(waId, patch) {
+  for (const l of (crmState.leads || [])) { const m = (l.chatHistory || []).find(x => x.waId === waId); if (m) { Object.assign(m, patch); saveToLocalCache(); return 'L:' + l.id; } }
+  const store = readJson_(NUM_CHAT_KEY);
+  for (const k of Object.keys(store)) { const m = (store[k] || []).find(x => x.waId === waId); if (m) { Object.assign(m, patch); try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {} return k; } }
+  return null;
 }
 
 /* ---------- sessions: one Team History line when a chat starts, one when it ends ---------- */
@@ -8591,8 +8610,18 @@ function enableReplyAlerts() {
   Notification.requestPermission().then(p => showCRMToast(p === 'granted' ? 'Reply alerts are on.' : 'Alerts are blocked in your browser settings.', p === 'granted' ? 'notifications_active' : 'warning'));
 }
 
+/* ---------- floating windows (WhatsApp Web and Gmail cannot be shown inside another website, so they open as small floating windows) ---------- */
+function openFloating_(url, name) {
+  const w = Math.min(520, (screen.availWidth || 1200) - 40), h = Math.min(780, (screen.availHeight || 800) - 80);
+  const left = Math.max(0, (screen.availWidth || 1200) - w - 20);
+  const win = window.open(url, name || 'berich_float', `popup=yes,width=${w},height=${h},left=${left},top=40`);
+  if (!win) window.open(url, '_blank', 'noopener');
+  return win;
+}
+
 /* ---------- send mode: official WhatsApp (default) or the linked bridge ---------- */
 function getSendMode_() { const m = loadWaPrefs_().sendMode; return m === 'bridge' || m === 'window' ? m : 'official'; }
+function effectiveSendMode_() { const m = loadWaPrefs_().sendMode; if (m === 'bridge' || m === 'window' || m === 'official') return m; return chatBridge.ready ? 'bridge' : 'official'; }
 function setSendMode(v) { v = (v === 'bridge' || v === 'window') ? v : 'official'; saveWaPrefs_({ sendMode: v }); showCRMToast(v === 'bridge' ? 'Sending automatically through the bridge.' : v === 'window' ? 'Messages are placed in the original WhatsApp window. You press Enter there.' : 'Sending with official WhatsApp Web (you press send).', 'check_circle'); }
 
 /* ---------- bridge status and incoming messages ---------- */
@@ -8612,6 +8641,7 @@ async function pollBridge_() {
     try { fetch(`http://localhost:${port}/api/track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numbers: trackedNumbers_() }) }).catch(() => {}); } catch (e) {}
     const wa = (data.state && data.state.wa) || {};
     chatBridge = { status: wa.status || 'ON', number: wa.number || '', ready: wa.status === 'READY' };
+    connectBridgeEvents_();
     (data.state?.messageLedger || []).forEach(item => { if (item.direction === 'INCOMING') ingestIncoming_(item); else if (item.direction === 'OUTGOING') ingestOutgoingSeen_(item); });
   } catch (e) { chatBridge = { status: 'OFF', number: '', ready: false }; }
   document.querySelectorAll('.chat-bridge-chip').forEach(el => { el.textContent = bridgeText_(); el.dataset.state = chatBridge.ready ? 'ok' : 'off'; });
@@ -8625,6 +8655,30 @@ function bridgeText_() {
   if (chatBridge.status === 'ON') return 'Old bridge is running. Run start-whatsapp-bridge.bat again to update it.';
   return `Bridge: ${chatBridge.status}`;
 }
+let bridgeES = null, bridgeESPort = 0;
+function connectBridgeEvents_() {
+  const port = senderPort_();
+  if (bridgeES && bridgeESPort === port) return;
+  try {
+    if (bridgeES) bridgeES.close();
+    bridgeES = new EventSource(`http://localhost:${port}/api/events`);
+    bridgeESPort = port;
+    bridgeES.onmessage = e => { try { handleBridgeEvent_(JSON.parse(e.data)); } catch (x) {} };
+  } catch (e) {}
+}
+function handleBridgeEvent_(ev) {
+  if (ev.kind === 'in') ingestIncoming_(ev);
+  else if (ev.kind === 'out') ingestOutgoingSeen_(ev);
+  else if (ev.kind === 'ack') {
+    const status = ev.ack >= 3 ? 'read' : ev.ack === 2 ? 'delivered' : 'sent';
+    const key = updateByWaId_(ev.id, { status });
+    if (key) renderWin_(key);
+  } else if (ev.kind === 'status') {
+    chatBridge = { status: ev.status, number: ev.number || '', ready: ev.status === 'READY' };
+    document.querySelectorAll('.chat-bridge-chip').forEach(el => { el.textContent = bridgeText_(); el.dataset.state = chatBridge.ready ? 'ok' : 'off'; });
+    if (document.getElementById('wa-link-body')) refreshLinkWhatsApp_();
+  }
+}
 const seenIncoming_ = new Set();
 
 function ingestOutgoingSeen_(item) {
@@ -8635,8 +8689,12 @@ function ingestOutgoingSeen_(item) {
   if (!lead && !chatSessions.has('N:' + digits)) return;
   const s = getSession_(lead || null, digits);
   const text = waSafeText(item.text);
+  const pending = threadOf_(s).find(m => m.direction === 'OUTGOING' && m.status === 'pending' && waSafeText(m.text) === text);
+  if (pending) { updateThreadMsg_(s, pending.cid, { status: 'sent', waId: item.id, via: 'WhatsApp Web (confirmed)' }); noteChatEvent_(s, 'sent'); renderWin_(s.key); return; }
+  const known = threadOf_(s).find(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && !m.waId && item.id);
+  if (known) { updateThreadMsg_(s, known.cid, { waId: item.id }); return; }
   if (threadOf_(s).some(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 120000)) return;
-  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp window', text: item.text, timestamp: item.timestamp });
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp window', text: item.text, timestamp: item.timestamp, status: 'sent', waId: item.id });
   noteChatEvent_(s, 'sent');
   renderWin_(s.key);
 }
@@ -8652,7 +8710,7 @@ function ingestIncoming_(item) {
   pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp });
   notifyIncoming_(lead || null, item.text, digits);
 }
-setInterval(() => { if (!document.hidden) pollBridge_(); }, 6000);
+setInterval(() => { if (!document.hidden) pollBridge_(); }, 15000);
 
 /* ---------- email from a chosen account ---------- */
 function mailUrl_(s, text, lead) {
@@ -8665,7 +8723,7 @@ function sendWaDraftByEmail() {
   if (!draft) { showCRMToast('Write or pick a message first.', 'warning'); return; }
   const leadId = document.getElementById('wa-cmd-client-select')?.value;
   const lead = (globalState.leads || []).find(l => l.id === leadId) || null;
-  window.open(mailUrl_(getActiveSender_(), draft, lead), '_blank', 'noopener');
+  openFloating_(mailUrl_(getActiveSender_(), draft, lead), 'berich_mail');
   const s = getSession_(lead, document.getElementById('wa-cmd-phone')?.value || '');
   pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'Email from ' + (getActiveSender_().email || getActiveSender_().label), text: waSafeText(draft) });
   noteChatEvent_(s, 'sent');
@@ -8736,7 +8794,7 @@ function toggleChatLauncher() {
     const sel = document.getElementById('chat-launch-client');
     sel.innerHTML = '<option value="">Choose a client</option>' + (globalState.leads || []).map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.clientName)}</option>`).join('');
     renderSenderControls_(); updateChatLauncher_(); pollBridge_();
-    const sm = document.getElementById('chat-send-mode'); if (sm) sm.value = getSendMode_();
+    const sm = document.getElementById('chat-send-mode'); if (sm) sm.value = effectiveSendMode_();
   }
 }
 function launchChatFromPanel(newTab) {
@@ -8843,7 +8901,12 @@ function renderWin_(key) {
   box.innerHTML = hist.length ? hist.map(m => {
     const mine = m.direction === 'OUTGOING';
     const when = m.timestamp ? new Date(m.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span></div><div>${esc(String(m.text).slice(0, 600))}</div></div>`;
+    let st = '';
+    if (mine && m.status === 'pending') st = `<div class="wa-msg-status wa-pending">Opened in WhatsApp. Not confirmed.<span class="wa-pending-btns"><button type="button" onclick="confirmPending_('${s.key}','${m.cid}')">I sent it</button><button type="button" onclick="discardPending_('${s.key}','${m.cid}')">Remove</button></span></div>`;
+    else if (mine && m.status === 'read') st = '<div class="wa-msg-status wa-read">\u2713\u2713 Read</div>';
+    else if (mine && m.status === 'delivered') st = '<div class="wa-msg-status">\u2713\u2713 Delivered</div>';
+    else if (mine && m.status === 'sent') st = '<div class="wa-msg-status">\u2713 Sent</div>';
+    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span></div><div>${esc(String(m.text).slice(0, 600))}</div>${st}</div>`;
   }).join('') : '<span class="wa-help">No messages yet. Your chat history is stored only on this computer.</span>';
   box.scrollTop = box.scrollHeight;
   win.querySelector('.chat-bridge-chip').textContent = bridgeText_();
@@ -8902,22 +8965,30 @@ async function winSend_(key) {
   if (!text) { showCRMToast('Type a message first.', 'warning'); return; }
   if (!s.phone) { showCRMToast('This chat has no WhatsApp number. Add the number to the client or type it in Chats.', 'warning'); return; }
   const sender = getActiveSender_();
-  if (getSendMode_() === 'window' && chatBridge.ready) { await winDraft_(key); input.value = ''; renderWin_(key); return; }
-  let delivered = false;
-  if (chatBridge.ready && getSendMode_() === 'bridge') {
+  const mode = effectiveSendMode_();
+  if (mode === 'window' && chatBridge.ready) { await winDraft_(key); input.value = ''; renderWin_(key); return; }
+  if (mode === 'bridge' && chatBridge.ready) {
     try {
       const r = await fetch(`http://localhost:${sender.port || 3030}/api/send-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, text, leadId: s.leadId }) });
       const j = await r.json().catch(() => ({}));
-      delivered = r.ok && j.status === 'SENT';
+      if (r.ok && j.status === 'SENT') {
+        pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text, status: 'sent', waId: j.id });
+        noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
+        showCRMToast('Sent. Delivery ticks update live.', 'check_circle');
+        return;
+      }
     } catch (e) {}
+    showCRMToast('The bridge could not send this. Opening WhatsApp instead.', 'warning');
   }
-  if (!delivered) window.open(waLink_(s.phone, text), '_blank', 'noopener');
-  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: delivered ? 'WhatsApp (linked)' : 'WhatsApp Web', text });
-  noteChatEvent_(s, 'sent');
-  input.value = '';
-  renderWin_(key);
-  showCRMToast(delivered ? 'Sent through the linked bridge.' : 'WhatsApp opened with your message. Press send there.', delivered ? 'check_circle' : 'chat');
+  // Official WhatsApp Web: the CRM cannot know whether you pressed send, so the message stays "not confirmed".
+  openFloating_(waLink_(s.phone, text), 'berich_wa_' + s.phone);
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp Web', text, status: 'pending' });
+  noteChatEvent_(s, 'drafted');
+  input.value = ''; renderWin_(key);
+  showCRMToast('WhatsApp opened with your message. It stays "not confirmed" until you press send there.', 'chat');
 }
+function confirmPending_(key, cid) { const s = chatSessions.get(key); if (!s) return; updateThreadMsg_(s, cid, { status: 'sent', via: 'WhatsApp Web (confirmed by you)' }); noteChatEvent_(s, 'sent'); renderWin_(key); }
+function discardPending_(key, cid) { const s = chatSessions.get(key); if (!s) return; removeThreadMsg_(s, cid); renderWin_(key); }
 function winLogReply_(key) {
   const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
   const input = win.querySelector('[data-role="input"]');
@@ -8932,7 +9003,7 @@ function winEmail_(key) {
   const input = win.querySelector('[data-role="input"]'); const text = input.value.trim();
   if (!text) { showCRMToast('Type a message first.', 'warning'); return; }
   const lead = (globalState.leads || []).find(l => l.id === s.leadId) || null;
-  window.open(mailUrl_(getActiveSender_(), text, lead), '_blank', 'noopener');
+  openFloating_(mailUrl_(getActiveSender_(), text, lead), 'berich_mail');
   pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'Email from ' + (getActiveSender_().email || getActiveSender_().label), text: waSafeText(text) });
   noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
 }
@@ -8996,7 +9067,7 @@ function openLinkWhatsApp() {
       </div>
       <div id="wa-link-body" class="flex flex-col gap-3 items-start"><p class="wa-help">Checking the bridge...</p></div>
       <div class="flex flex-wrap gap-2">
-        <button type="button" class="wa-chip" onclick="window.open('https://web.whatsapp.com','_blank','noopener')">Open WhatsApp Web</button>
+        <button type="button" class="wa-chip" onclick="openFloating_('https://web.whatsapp.com','berich_wa_web')">Open WhatsApp Web</button>
         <button type="button" class="wa-chip" onclick="openGmailInbox()">Open Gmail</button>
       </div>
       <p class="wa-help">Use a spare or business number. You can unlink any time on the phone: WhatsApp, Linked devices, then log out.</p>
@@ -9005,6 +9076,11 @@ function openLinkWhatsApp() {
   refreshLinkWhatsApp_();
   clearInterval(linkPollTimer);
   linkPollTimer = setInterval(refreshLinkWhatsApp_, 3000);
+}
+async function restartWhatsAppLink() {
+  const port = getActiveSender_().port || 3030;
+  try { await fetch(`http://localhost:${port}/api/restart`, { method: 'POST' }); showCRMToast('Restarting the link. Wait for the new code.', 'sync'); } catch (e) { showCRMToast('Could not reach the bridge.', 'warning'); }
+  setTimeout(refreshLinkWhatsApp_, 1500);
 }
 function closeLinkWhatsApp() { clearInterval(linkPollTimer); closeModal('crm-wa-link-modal'); }
 async function refreshLinkWhatsApp_() {
@@ -9019,7 +9095,10 @@ async function refreshLinkWhatsApp_() {
       body.innerHTML = `<p class="text-lg font-bold" style="color:var(--uv-ok)">WhatsApp is linked: +${escapeHtml(d.number)}</p><p class="wa-help">The original WhatsApp window is open on this computer. Use Chats in the CRM to put messages into it.</p>`;
       clearInterval(linkPollTimer);
     } else if (d.status === 'QR' && d.qr) {
-      body.innerHTML = `<p class="wa-help">On your phone: WhatsApp, Settings, Linked devices, Link a device. Then scan this code.</p><img alt="WhatsApp QR code" src="${d.qr}" width="280" height="280" style="background:#fff;padding:8px;border-radius:12px"/><p class="wa-help">The code refreshes by itself.</p>`;
+      const old = d.qrAgeSec !== null && d.qrAgeSec > 45;
+      body.innerHTML = `<p class="wa-help">On your phone: WhatsApp, Settings, Linked devices, Link a device. Then scan this code.</p><img alt="WhatsApp QR code" src="${d.qr}" width="280" height="280" style="background:#fff;padding:8px;border-radius:12px;${old ? 'opacity:0.35' : ''}"/><p class="wa-help">${old ? 'This code is old and WhatsApp will say it could not link. Press Restart link for a fresh one.' : 'The code refreshes by itself. Scan it within a few seconds.'}</p><button type="button" class="wa-chip" onclick="restartWhatsAppLink()">Restart link</button>`;
+    } else if (d.status === 'RESTARTING') {
+      body.innerHTML = `<p class="wa-help">Restarting the WhatsApp link. A new code appears in a few seconds.${d.error ? ' (' + escapeHtml(d.error) + ')' : ''}</p>`;
     } else if (d.status === 'NOT_INSTALLED') {
       body.innerHTML = '<p class="wa-help">One-time install needed. Close the bridge window and run start-whatsapp-bridge.bat again.</p>';
     } else {
@@ -9031,7 +9110,7 @@ async function refreshLinkWhatsApp_() {
 }
 function openGmailInbox() {
   const em = getActiveSender_().email;
-  window.open(em ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(em)}` : 'https://mail.google.com/', '_blank', 'noopener');
+  openFloating_(em ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(em)}` : 'https://mail.google.com/', 'berich_gmail');
 }
 
 /* ---------- keep chats out of GitHub, and keep them after a pull ---------- */
