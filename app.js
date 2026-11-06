@@ -9128,6 +9128,11 @@ async function winSend_(key) {
   if (!s.phone) { showCRMToast('This chat has no WhatsApp number. Add the number to the client or type it in Chats.', 'warning'); return; }
   const sender = getActiveSender_();
   const mode = effectiveSendMode_();
+  if (mode === 'bridge' && !chatBridge.ready) {
+    // You chose automatic sending: never jump to a new WhatsApp tab on your own. Check once, then tell you and keep your text.
+    await pollBridge_();
+    if (!chatBridge.ready) { showCRMToast('The bridge is off, so nothing was sent. Run start-whatsapp-bridge.bat, then press Send again. (Or choose Official WhatsApp in "Send with".)', 'warning'); return; }
+  }
   if (mode === 'window' && chatBridge.ready) { await winDraft_(key); input.value = ''; renderWin_(key); return; }
   if (mode === 'bridge' && chatBridge.ready) {
     // Show the message at once (clock), then confirm when the bridge answers. No waiting on screen.
