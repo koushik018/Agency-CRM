@@ -8721,6 +8721,7 @@ function mailUrl_(s, text, lead) {
 function sendWaDraftByEmail() {
   const draft = (document.getElementById('wa-cmd-draft')?.value || '').trim();
   if (!draft) { showCRMToast('Write or pick a message first.', 'warning'); return; }
+  if (gmailClientId_()) { openMailWindow(document.getElementById('wa-cmd-client-select')?.value || '', '', { body: draft }); return; }
   const leadId = document.getElementById('wa-cmd-client-select')?.value;
   const lead = (globalState.leads || []).find(l => l.id === leadId) || null;
   openFloating_(mailUrl_(getActiveSender_(), draft, lead), 'berich_mail');
@@ -8865,7 +8866,7 @@ function openChatWindow(leadId, phone, opts) {
           <button type="button" class="wa-chip" onclick="winDraft_('${s.key}')" title="Types this message into the original WhatsApp window. You press Enter there.">Put in WhatsApp</button>
           <button type="button" class="wa-chip" onclick="winLogReply_('${s.key}')">Log client reply</button>
           <button type="button" class="wa-chip" onclick="winEmail_('${s.key}')">Email</button>
-          <button type="button" class="wa-chip" onclick="openGmailInbox()">Open Gmail</button>
+          <button type="button" class="wa-chip" onclick="openMailWindow('${s.leadId}','')">Mail</button>
           <button type="button" class="wa-chip wa-chip-accent chat-save-client hidden" onclick="saveChatAsClient_('${s.key}')">Save as client</button>
         </div>
       </div>`;
@@ -9002,6 +9003,7 @@ function winEmail_(key) {
   const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
   const input = win.querySelector('[data-role="input"]'); const text = input.value.trim();
   if (!text) { showCRMToast('Type a message first.', 'warning'); return; }
+  if (gmailClientId_()) { openMailWindow(s.leadId, '', { body: text }); input.value = ''; return; }
   const lead = (globalState.leads || []).find(l => l.id === s.leadId) || null;
   openFloating_(mailUrl_(getActiveSender_(), text, lead), 'berich_mail');
   pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'Email from ' + (getActiveSender_().email || getActiveSender_().label), text: waSafeText(text) });
@@ -9108,10 +9110,319 @@ async function refreshLinkWhatsApp_() {
     body.innerHTML = `<p class="wa-help">The bridge is not running on this computer. Double-click <b>start-whatsapp-bridge.bat</b> in the project folder, wait for its window, then this page shows the QR code. If it still fails, close the black bridge window and run the file again; it closes the old copy for you.</p>`;
   }
 }
-function openGmailInbox() {
-  const em = getActiveSender_().email;
-  openFloating_(em ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(em)}` : 'https://mail.google.com/', 'berich_gmail');
+
+
+/* ==========================================================================
+   GMAIL INSIDE THE CRM (Google Gmail API, free, signs in as each partner)
+   - The OAuth Client ID is not a secret and is kept only on this computer.
+   - The sign-in token lives in this browser tab only (sessionStorage, about 1 hour).
+   - The mail list and mail bodies are never saved. Only a short copy of an email you send to, or receive from, a CRM client is added to that client's private chat on this computer (never synced to GitHub).
+   ========================================================================== */
+const GMAIL_CLIENT_KEY = 'beRich_gmail_client_v1';
+const GMAIL_TOKEN_KEY = 'beRich_gmail_tok';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send';
+let gmailToken = null;
+const seenMail_ = new Set();
+function leadEmailOf_(lead) { return lead ? String(lead.clientEmail || lead.email || '').trim() : ''; }
+
+function gmailClientId_() { return (localStorage.getItem(GMAIL_CLIENT_KEY) || '').trim(); }
+function gmailReady_() {
+  try {
+    const t = gmailToken || JSON.parse(sessionStorage.getItem(GMAIL_TOKEN_KEY) || 'null');
+    if (t && t.exp > Date.now() + 30000) { gmailToken = t; return true; }
+  } catch (e) {}
+  return false;
 }
+function loadGsi_() {
+  return new Promise((resolve, reject) => {
+    if (window.google && google.accounts && google.accounts.oauth2) return resolve();
+    const sc = document.createElement('script');
+    sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+    sc.onload = () => resolve(); sc.onerror = () => reject(new Error('Could not load Google sign-in. Check your internet connection.'));
+    document.head.appendChild(sc);
+  });
+}
+async function gmailSignIn_() {
+  const cid = gmailClientId_();
+  if (!cid) { openGmailSetup(); return false; }
+  try { await loadGsi_(); } catch (e) { showCRMToast(e.message, 'warning'); return false; }
+  return new Promise(resolve => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: cid, scope: GMAIL_SCOPES,
+      callback: async resp => {
+        if (resp.error) { showCRMToast('Google sign-in was cancelled or blocked: ' + resp.error, 'warning'); return resolve(false); }
+        gmailToken = { token: resp.access_token, exp: Date.now() + (Number(resp.expires_in) || 3600) * 1000, email: '' };
+        try { const p = await gmailApi_('/profile'); gmailToken.email = p.emailAddress || ''; } catch (e) {}
+        try { sessionStorage.setItem(GMAIL_TOKEN_KEY, JSON.stringify(gmailToken)); } catch (e) {}
+        showCRMToast('Gmail connected' + (gmailToken.email ? ' as ' + gmailToken.email : '') + '.', 'mail');
+        resolve(true);
+      },
+      error_callback: () => { showCRMToast('The Google sign-in window was closed.', 'warning'); resolve(false); }
+    });
+    client.requestAccessToken({ prompt: '' });
+  });
+}
+async function gmailApi_(path, opts) {
+  if (!gmailReady_()) throw new Error('signin');
+  const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me' + path, {
+    ...(opts || {}),
+    headers: { Authorization: 'Bearer ' + gmailToken.token, 'Content-Type': 'application/json', ...((opts && opts.headers) || {}) }
+  });
+  if (r.status === 401) { gmailToken = null; try { sessionStorage.removeItem(GMAIL_TOKEN_KEY); } catch (e) {} throw new Error('signin'); }
+  if (!r.ok) { let m = 'Gmail error ' + r.status; try { const j = await r.json(); m = (j.error && j.error.message) || m; } catch (e) {} throw new Error(m); }
+  return r.json();
+}
+
+/* ---------- pure helpers (tested) ---------- */
+function b64urlEncodeUtf8_(str) {
+  const bytes = new TextEncoder().encode(str); let bin = '';
+  bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlDecodeUtf8_(data) {
+  const b64 = String(data || '').replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+function mimeSubject_(subject) {
+  if (/^[\x20-\x7E]*$/.test(subject)) return subject;
+  const bytes = new TextEncoder().encode(subject); let bin = '';
+  bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return '=?UTF-8?B?' + btoa(bin) + '?=';
+}
+function buildMime_(m) {
+  const bodyBytes = new TextEncoder().encode(String(m.body || '').replace(/\r?\n/g, '\r\n')); let bin = '';
+  bodyBytes.forEach(b => { bin += String.fromCharCode(b); });
+  const body64 = btoa(bin).replace(/(.{76})/g, '$1\r\n');
+  const head = [
+    m.from ? 'From: ' + m.from : null,
+    'To: ' + m.to,
+    'Subject: ' + mimeSubject_(m.subject || ''),
+    m.inReplyTo ? 'In-Reply-To: ' + m.inReplyTo : null,
+    m.references ? 'References: ' + m.references : null,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64'
+  ].filter(Boolean).join('\r\n');
+  return head + '\r\n\r\n' + body64;
+}
+function mailHeader_(msg, name) {
+  const h = ((msg.payload && msg.payload.headers) || []).find(x => x.name.toLowerCase() === name.toLowerCase());
+  return h ? h.value : '';
+}
+function mailBodyText_(payload) {
+  let plain = '', html = '';
+  const walk = p => {
+    if (!p) return;
+    if (p.mimeType === 'text/plain' && p.body && p.body.data && !plain) plain = b64urlDecodeUtf8_(p.body.data);
+    else if (p.mimeType === 'text/html' && p.body && p.body.data && !html) html = b64urlDecodeUtf8_(p.body.data);
+    (p.parts || []).forEach(walk);
+  };
+  walk(payload);
+  if (plain) return plain;
+  if (html) { try { return new DOMParser().parseFromString(html, 'text/html').body.textContent.replace(/\n{3,}/g, '\n\n').trim(); } catch (e) {} }
+  return '';
+}
+
+/* ---------- setup window ---------- */
+function openGmailSetup() {
+  let modal = document.getElementById('crm-gmail-setup');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'crm-gmail-setup';
+    modal.className = 'fixed inset-0 z-[60] hidden items-center justify-center p-4 overflow-y-auto';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-gmail-setup')"></div>
+    <div class="relative w-full max-w-2xl neo-modal p-6 z-10 flex flex-col gap-4 my-8">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xl font-bold">Connect Gmail to the CRM</h3>
+        <button type="button" class="wa-chip" onclick="closeModal('crm-gmail-setup')">Close</button>
+      </div>
+      <p class="wa-help">This lets you read and send email inside the CRM. It is free. Do these steps once. Each partner then signs in with their own Google account, and nobody sees anyone else's mail.</p>
+      <ol class="wa-steps">
+        <li>Open <b>console.cloud.google.com</b> and create a project called "beRich CRM".</li>
+        <li>Go to <b>APIs and Services</b>, then <b>Library</b>, search <b>Gmail API</b> and press <b>Enable</b>.</li>
+        <li>Go to <b>OAuth consent screen</b>. Choose <b>External</b>, fill the app name and your email, then under <b>Test users</b> add every partner's Gmail address.</li>
+        <li>Go to <b>Credentials</b>, press <b>Create credentials</b>, then <b>OAuth client ID</b>, type <b>Web application</b>.</li>
+        <li>Under <b>Authorized JavaScript origins</b> add <b>https://koushik018.github.io</b>. Leave the redirect list empty. Press Create.</li>
+        <li>Copy the <b>Client ID</b> (it ends with .apps.googleusercontent.com) and paste it below.</li>
+      </ol>
+      <input id="gmail-client-input" class="wa-input" style="width:100%" placeholder="Paste your Client ID here" value="${escapeHtml(gmailClientId_())}"/>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="wa-chip wa-chip-on" onclick="saveGmailClient()">Save and sign in with Google</button>
+        <button type="button" class="wa-chip" onclick="closeModal('crm-gmail-setup'); openFloating_('https://mail.google.com/','berich_gmail')">Skip: open Gmail in a small window</button>
+      </div>
+      <p class="wa-help">Google will show "Google hasn't verified this app". That is normal for your own private app. Press <b>Advanced</b>, then <b>Go to beRich CRM</b>. The sign-in lasts about an hour, then the CRM asks again. The Client ID stays on this computer only.</p>
+    </div>`;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+async function saveGmailClient() {
+  const v = (document.getElementById('gmail-client-input')?.value || '').trim();
+  if (!/\.apps\.googleusercontent\.com$/.test(v)) { showCRMToast('That does not look like a Client ID. It ends with .apps.googleusercontent.com', 'warning'); return; }
+  try { localStorage.setItem(GMAIL_CLIENT_KEY, v); } catch (e) {}
+  closeModal('crm-gmail-setup');
+  if (await gmailSignIn_()) openMailWindow('', '');
+}
+
+/* ---------- mail window ---------- */
+let mailState = null;
+async function openGmailInbox() { openMailWindow('', ''); }
+async function openMailWindow(leadId, email, opts) {
+  if (!gmailClientId_()) { openGmailSetup(); return; }
+  ensureChatLayer_();
+  const lead = (globalState.leads || []).find(l => l.id === leadId) || null;
+  const addr = (email || leadEmailOf_(lead) || '').trim();
+  mailState = { leadId: lead ? lead.id : '', name: lead ? lead.clientName : (addr || 'Inbox'), email: addr, list: [], open: null, replyTo: null, prefill: (opts && opts.body) || '' };
+  let win = document.getElementById('mailwin');
+  if (win) win.remove();
+  win = document.createElement('div');
+  win.id = 'mailwin'; win.className = 'chat-win mail-win';
+  win.style.right = '24px'; win.style.bottom = '84px';
+  win.innerHTML = `
+    <div class="chat-win-head" data-drag>
+      <div class="chat-win-title"><strong class="chat-win-name"></strong><span class="chat-win-sub"></span></div>
+      <div class="chat-win-btns">
+        <button type="button" class="wa-paste" onclick="document.getElementById('mailwin').classList.toggle('chat-min')">Min</button>
+        <button type="button" class="wa-paste" onclick="openFloating_('https://mail.google.com/mail/?authuser='+encodeURIComponent((gmailToken&&gmailToken.email)||''),'berich_gmail')">Gmail site</button>
+        <button type="button" class="wa-paste chat-end" onclick="closeMailWindow()">Close</button>
+      </div>
+    </div>
+    <div class="chat-win-body" id="mail-body"></div>`;
+  document.getElementById('crm-chat-layer').appendChild(win);
+  makeDraggable_(win);
+  win.querySelector('.chat-win-name').textContent = 'Mail: ' + mailState.name;
+  win.querySelector('.chat-win-sub').textContent = mailState.email || 'Your inbox';
+  if (!gmailReady_()) {
+    document.getElementById('mail-body').innerHTML = `<p class="wa-help">Connect your Google account to read and send mail here. Only you can see it.</p><button type="button" class="wa-chip wa-chip-on" onclick="mailConnect_()">Sign in with Google</button><button type="button" class="wa-chip" onclick="openGmailSetup()">Change Client ID</button>`;
+    return;
+  }
+  await refreshMailList_();
+}
+async function mailConnect_() { if (await gmailSignIn_()) refreshMailList_(); }
+function closeMailWindow() { document.getElementById('mailwin')?.remove(); mailState = null; }
+function mailEsc_(t) { return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+async function refreshMailList_() {
+  const body = document.getElementById('mail-body'); if (!body || !mailState) return;
+  body.innerHTML = '<p class="wa-help">Loading mail...</p>';
+  try {
+    const q = mailState.email ? `from:${mailState.email} OR to:${mailState.email}` : 'in:inbox';
+    const list = await gmailApi_('/messages?maxResults=12&q=' + encodeURIComponent(q));
+    const ids = (list.messages || []).map(m => m.id);
+    const metas = await Promise.all(ids.map(id => gmailApi_(`/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`)));
+    mailState.list = metas;
+    renderMailList_();
+  } catch (e) {
+    if (e.message === 'signin') { body.innerHTML = '<p class="wa-help">Your Google sign-in ended. Sign in again.</p><button type="button" class="wa-chip wa-chip-on" onclick="mailConnect_()">Sign in with Google</button>'; return; }
+    body.innerHTML = `<p class="wa-help">${mailEsc_(e.message)}</p><button type="button" class="wa-chip" onclick="refreshMailList_()">Try again</button>`;
+  }
+}
+function renderMailList_() {
+  const body = document.getElementById('mail-body'); if (!body || !mailState) return;
+  const rows = mailState.list.map((m, i) => {
+    const unread = (m.labelIds || []).includes('UNREAD');
+    const when = new Date(mailHeader_(m, 'Date') || Number(m.internalDate)).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return `<button type="button" class="mail-row${unread ? ' mail-unread' : ''}" onclick="openMailMessage_(${i})"><span class="mail-from">${mailEsc_(mailHeader_(m, 'From').replace(/<.*>/, '').trim() || mailHeader_(m, 'From'))}</span><span class="mail-subj">${mailEsc_(mailHeader_(m, 'Subject') || '(no subject)')}</span><span class="mail-snip">${mailEsc_(m.snippet || '')}</span><span class="mail-date">${mailEsc_(when)}</span></button>`;
+  }).join('') || '<p class="wa-help">No mail found' + (mailState.email ? ' with ' + mailEsc_(mailState.email) : '') + '.</p>';
+  body.innerHTML = `<div class="mail-list">${rows}</div>
+    <div class="flex flex-wrap gap-1.5"><button type="button" class="wa-chip wa-chip-on" onclick="mailCompose_()">Write new</button><button type="button" class="wa-chip" onclick="refreshMailList_()">Refresh</button></div>`;
+  if (mailState.prefill) { mailCompose_(mailState.prefill); mailState.prefill = ''; }
+}
+async function openMailMessage_(i) {
+  const body = document.getElementById('mail-body'); if (!body || !mailState) return;
+  body.innerHTML = '<p class="wa-help">Opening...</p>';
+  try {
+    const m = await gmailApi_('/messages/' + mailState.list[i].id + '?format=full');
+    mailState.open = m;
+    const text = mailBodyText_(m.payload) || m.snippet || '';
+    body.innerHTML = `<div class="mail-read"><div class="mail-meta"><b>${mailEsc_(mailHeader_(m, 'Subject') || '(no subject)')}</b><br>From: ${mailEsc_(mailHeader_(m, 'From'))}<br>To: ${mailEsc_(mailHeader_(m, 'To'))}<br>${mailEsc_(mailHeader_(m, 'Date'))}</div><pre class="mail-text">${mailEsc_(text.slice(0, 6000))}</pre></div>
+      <div class="flex flex-wrap gap-1.5"><button type="button" class="wa-chip wa-chip-on" onclick="mailReply_()">Reply</button><button type="button" class="wa-chip" onclick="renderMailList_()">Back to list</button></div>`;
+    if ((m.labelIds || []).includes('UNREAD')) gmailApi_('/messages/' + m.id + '/modify', { method: 'POST', body: JSON.stringify({ removeLabelIds: ['UNREAD'] }) }).catch(() => {});
+  } catch (e) { body.innerHTML = `<p class="wa-help">${mailEsc_(e.message === 'signin' ? 'Sign in again.' : e.message)}</p><button type="button" class="wa-chip" onclick="renderMailList_()">Back</button>`; }
+}
+function mailReply_() {
+  const m = mailState && mailState.open; if (!m) return;
+  const fromHdr = mailHeader_(m, 'Reply-To') || mailHeader_(m, 'From');
+  const addr = (fromHdr.match(/<([^>]+)>/) || [null, fromHdr])[1].trim();
+  const subj = mailHeader_(m, 'Subject') || '';
+  mailState.replyTo = { threadId: m.threadId, messageId: mailHeader_(m, 'Message-ID'), references: (mailHeader_(m, 'References') + ' ' + mailHeader_(m, 'Message-ID')).trim() };
+  mailCompose_('', addr, /^re:/i.test(subj) ? subj : 'Re: ' + subj);
+}
+function mailCompose_(bodyText, to, subject) {
+  const body = document.getElementById('mail-body'); if (!body || !mailState) return;
+  const tone = loadWaPrefs_().tone || 'friendly';
+  body.innerHTML = `
+    <input id="mail-to" class="wa-input" style="width:100%" placeholder="To" value="${mailEsc_(to || mailState.email || '')}"/>
+    <input id="mail-subject" class="wa-input" style="width:100%" placeholder="Subject" value="${mailEsc_(subject || '')}"/>
+    <details class="chat-more"><summary>Writing helper and AI</summary><div class="chat-more-body">
+      <div class="grid grid-cols-2 gap-1.5">
+        <select class="wa-input" id="mail-tone" onchange="saveWaPrefs_({tone:this.value})">${Object.entries(WA_TONES).map(([k, v]) => `<option value="${k}"${k === tone ? ' selected' : ''}>${v}</option>`).join('')}</select>
+        <select class="wa-input" onchange="mailTemplate_(this.value); this.value=''"><option value="">Write for me...</option><option value="pitch">Introduce our studio</option><option value="welcome">Kickoff</option><option value="video_cut">Video ready</option><option value="payment_request">Payment request</option><option value="follow_up">Follow-up</option></select>
+      </div>
+      <div class="flex flex-wrap gap-1.5"><button type="button" class="wa-paste" onclick="mailRefine_('claude')">Refine with Claude</button><button type="button" class="wa-paste" onclick="mailRefine_('gemini')">Refine with Gemini</button><button type="button" class="wa-paste" onclick="mailPasteAi_()">Paste AI reply</button></div>
+    </div></details>
+    <textarea id="mail-text" class="wa-input chat-input" rows="8" placeholder="Write your email">${mailEsc_(bodyText || '')}</textarea>
+    <div class="flex flex-wrap gap-1.5"><button type="button" class="wa-chip wa-chip-on" onclick="mailSend_()">Send email</button><button type="button" class="wa-chip" onclick="renderMailList_()">Cancel</button></div>`;
+}
+function mailTemplate_(type) { if (!type) return; document.getElementById('mail-text').value = buildWaMessage(type, document.getElementById('mail-tone').value, mailState.leadId || ''); }
+function mailRefine_(which) {
+  const draft = (document.getElementById('mail-text')?.value || '').trim(); if (!draft) { showCRMToast('Write something first.', 'warning'); return; }
+  const tone = WA_TONES[document.getElementById('mail-tone').value] || '';
+  const prompt = `Rewrite this email from a video production studio to a client.\nTone and audience: ${tone}.\nKeep every link, amount and name exactly as written. Keep it clear, warm and persuasive, with a short subject idea on the first line starting with "Subject:" and one clear next step at the end.\nReturn only the final email.\n\nEmail:\n${draft}`;
+  (navigator.clipboard ? navigator.clipboard.writeText(prompt).catch(() => {}) : Promise.resolve()).then(() => showCRMToast(which === 'gemini' ? 'Prompt copied. Press Ctrl+V in Gemini, copy its answer, then press Paste AI reply.' : 'Claude opened. Copy its answer, then press Paste AI reply.', 'auto_awesome'));
+  openFloating_(which === 'gemini' ? 'https://gemini.google.com/app' : 'https://claude.ai/new?q=' + encodeURIComponent(prompt), 'berich_ai');
+}
+async function mailPasteAi_() {
+  try {
+    let text = (await navigator.clipboard.readText() || '').trim(); if (!text) { showCRMToast('Clipboard is empty. Copy the AI answer first.', 'warning'); return; }
+    const m = text.match(/^Subject:\s*(.+)\n+/i);
+    if (m) { const subj = document.getElementById('mail-subject'); if (subj && !subj.value) subj.value = m[1].trim(); text = text.slice(m[0].length); }
+    document.getElementById('mail-text').value = text; showCRMToast('AI answer placed in the email. Edit it, then Send.', 'check_circle');
+  } catch (e) { showCRMToast('Clipboard blocked. Click the box and press Ctrl+V.', 'warning'); }
+}
+async function mailSend_() {
+  const to = (document.getElementById('mail-to')?.value || '').trim(), subject = (document.getElementById('mail-subject')?.value || '').trim(), text = (document.getElementById('mail-text')?.value || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { showCRMToast('Enter a valid email address.', 'warning'); return; }
+  if (!text) { showCRMToast('Write the email first.', 'warning'); return; }
+  const rp = mailState.replyTo;
+  try {
+    await gmailApi_('/messages/send', { method: 'POST', body: JSON.stringify({ raw: b64urlEncodeUtf8_(buildMime_({ from: gmailToken.email, to, subject, body: text, inReplyTo: rp && rp.messageId, references: rp && rp.references })), ...(rp && rp.threadId ? { threadId: rp.threadId } : {}) }) });
+    const lead = (globalState.leads || []).find(l => l.id === mailState.leadId) || (globalState.leads || []).find(l => leadEmailOf_(l).toLowerCase() === to.toLowerCase()) || null;
+    if (lead) { const s = getSession_(lead, lead.contactPhone || lead.phone || ''); pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'Gmail (sent)', text: subject ? subject + ': ' + text : text, status: 'sent' }); noteChatEvent_(s, 'sent'); renderWin_(s.key); }
+    mailState.replyTo = null;
+    showCRMToast('Email sent from ' + (gmailToken.email || 'your Gmail') + '.', 'mail');
+    refreshMailList_();
+  } catch (e) {
+    if (e.message === 'signin') { showCRMToast('Your Google sign-in ended. Sign in again, then press Send.', 'warning'); mailConnect_(); return; }
+    showCRMToast('Email not sent: ' + e.message, 'warning');
+  }
+}
+
+/* ---------- new client mail alerts (checked every minute while signed in) ---------- */
+async function mailPoll_() {
+  try {
+    if (!gmailReady_() || document.hidden) return;
+    const emails = (crmState.leads || []).map(leadEmailOf_).filter(Boolean).slice(0, 20);
+    if (!emails.length) return;
+    const q = `in:inbox is:unread newer_than:2d from:(${emails.join(' OR ')})`;
+    const list = await gmailApi_('/messages?maxResults=10&q=' + encodeURIComponent(q));
+    for (const it of (list.messages || [])) {
+      if (seenMail_.has(it.id)) continue; seenMail_.add(it.id);
+      const m = await gmailApi_(`/messages/${it.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`);
+      const from = mailHeader_(m, 'From').toLowerCase();
+      const lead = (crmState.leads || []).find(l => leadEmailOf_(l) && from.includes(leadEmailOf_(l).toLowerCase()));
+      if (!lead) continue;
+      const s = getSession_(lead, lead.contactPhone || lead.phone || '');
+      pushThread_(s, { direction: 'INCOMING', author: lead.clientName, via: 'Gmail', text: (mailHeader_(m, 'Subject') ? mailHeader_(m, 'Subject') + ': ' : '') + (m.snippet || '') });
+      s.unread += 1; noteChatEvent_(s, 'received'); renderWin_(s.key);
+      showCRMToast(`New email from ${lead.clientName}: ${mailHeader_(m, 'Subject') || m.snippet || ''}`.slice(0, 120), 'mail');
+      try { if ('Notification' in window && Notification.permission === 'granted') new Notification('Email from ' + lead.clientName, { body: String(mailHeader_(m, 'Subject') || m.snippet || '').slice(0, 120) }); } catch (e) {}
+    }
+  } catch (e) {}
+}
+setInterval(mailPoll_, 60000);
 
 /* ---------- keep chats out of GitHub, and keep them after a pull ---------- */
 const __origBuildPayload_ = buildGitHubDatabasePayload_;
