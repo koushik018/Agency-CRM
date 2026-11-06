@@ -19,7 +19,6 @@ echo Starting the bridge. A page opens to link WhatsApp with your phone.
 echo Keep this window open while you chat from the CRM.
 echo.
 timeout /t 2 /nobreak >nul
-set WA_SHOW=1
 start http://localhost:3030/link
 :run
 node whatsapp-automation-service.js

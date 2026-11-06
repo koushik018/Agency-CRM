@@ -922,8 +922,21 @@ async function seedLids(numbers) {
 let waClient = null;
 let waRetries = 0;
 let restarting = false;
+const restartLog = [];
 async function restartWhatsApp(reason) {
   if (restarting) return;
+  // failsafe: never restart in a loop. After 4 restarts in 10 minutes, wait quietly for 10 minutes instead of opening windows non-stop.
+  const nowMs = Date.now(); while (restartLog.length && nowMs - restartLog[0] > 600000) restartLog.shift();
+  if (restartLog.length >= 4) {
+    restarting = true;
+    automationState.wa = { status: 'ERROR', number: '', qr: '', error: 'Too many restarts. Pausing for 10 minutes. Last reason: ' + String(reason || '') };
+    emitStatus(); console.log('[beRich Bridge] Too many restarts - pausing 10 minutes. Last reason: ' + reason);
+    try { if (waClient) await Promise.race([waClient.destroy(), new Promise(r => setTimeout(r, 8000))]); } catch (e) {}
+    waClient = null; restartLog.length = 0;
+    setTimeout(() => { restarting = false; startWhatsAppClient(); }, 600000);
+    return;
+  }
+  restartLog.push(nowMs);
   restarting = true;
   automationState.wa = { status: 'RESTARTING', number: '', qr: '', error: String(reason || '') };
   emitStatus();
