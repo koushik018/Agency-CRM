@@ -240,8 +240,8 @@ window.getModalElement = getModalElement;
  * ============================================================================
  */
 
-// 1. Deployed Google Apps Script Web App URL (Kept Strictly Intact)
-const DEFAULT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbydimCFgLqs3c-G6lczWlBPJ2ZqUeEIuyTKI1WNVxhLVenN3A1YDWNyvg7XQigrXc91bw/exec';
+// 1. Google Apps Script Web App URL: entered once per partner in Partners & Sheet Config
+const DEFAULT_WEB_APP_URL = ''; // set in Partners & Sheet Config (kept out of the public code)
 
 // 2. Default Customizable Agency Branding & Studio Payment Defaults (Synced Globally via Google Sheets)
 const DEFAULT_BRANDING = {
