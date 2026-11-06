@@ -54,15 +54,28 @@ const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'
 const EXT_MIME = Object.fromEntries(Object.entries(MIME_EXT).map(([m, e]) => [e, m]));
 const MAX_MEDIA_BYTES = 12 * 1024 * 1024;
 const seenMsgIds = new Set();
+// WhatsApp's newer ids lose _serialized (renamed $1) and a nested remote is an object: rebuild one string from whatever is there
+function wid(x) {
+  if (!x) return '';
+  if (typeof x === 'string') return x;
+  if (x._serialized) return x._serialized;
+  if (x.$1) return String(x.$1);
+  if (x.user && x.server) return x.user + '@' + x.server;
+  return '';
+}
+let loggedIdShape = false;
 function msgSerial(m) {
-  const k = m && m.id;
-  if (!k) return undefined;
-  if (typeof k === 'string') return k;
-  if (k._serialized) return k._serialized;
-  if (!k.id) return undefined;
-  const remote = k.remote && (k.remote._serialized || k.remote);
-  const part = k.participant && (k.participant._serialized || k.participant);
-  return [k.fromMe ? 'true' : 'false', remote, k.id, part].filter(x => x !== undefined && x !== null && x !== '').join('_');
+  for (const k of [m && m.id, m && m._data && m._data.id]) {
+    if (!k) continue;
+    if (typeof k === 'string') return k;
+    const direct = wid(k); if (direct && /_/.test(direct)) return direct;
+    if (!k.id || typeof k.id !== 'string') continue;
+    const remote = wid(k.remote), part = wid(k.participant);
+    if (!remote) continue;
+    return [k.fromMe ? 'true' : 'false', remote, k.id, part].filter(x => x !== undefined && x !== null && x !== '').join('_');
+  }
+  if (!loggedIdShape && m && m.id) { loggedIdShape = true; try { console.log('[beRich Bridge] Message id has an unknown shape: ' + JSON.stringify(m.id).slice(0, 300)); } catch (e) {} }
+  return undefined;
 }
 function saveMediaFile(mimetype, base64, hintName) {
   const bytes = Buffer.from(base64, 'base64');
@@ -833,17 +846,27 @@ setInterval(() => backfillTracked('timer'), 30000);
 
 const lidByNumber = {}; // full phone number -> '1234567890@lid', learned from messages and lookups
 function rememberLid(full, remote) {
-  const r = remote && (remote._serialized || remote);
-  if (r && /@lid$/.test(String(r)) && full) lidByNumber[full] = String(r);
+  const r = wid(remote);
+  if (r && /@lid$/.test(r) && full) lidByNumber[full] = r;
 }
 async function chatFor(full) {
   const tries = [];
   if (lidByNumber[full]) tries.push(lidByNumber[full]);
   tries.push(full + '@c.us');
   try { const wid = await waClient.getNumberId(full); if (wid && wid._serialized) tries.push(wid._serialized); } catch (e) {}
+  try { const res = await waClient.getContactLidAndPhone([full + '@c.us']); const lid = res && res[0] && res[0].lid; if (lid) { tries.unshift(wid(lid)); resolver.learn(wid(lid), full); } } catch (e) {}
   for (const id of [...new Set(tries)]) {
     try { const c = await waClient.getChatById(id); if (c) { if (/@lid$/.test(id)) lidByNumber[full] = id; return c; } } catch (e) { /* try the next form of the id */ }
   }
+  // last resort: look through the chat list for the chat that belongs to this number
+  try {
+    const chats = await waClient.getChats();
+    for (const c of chats) {
+      if (c.isGroup) continue;
+      const u = String(wid(c.id) || '').replace(/@.*/, '');
+      if (u === full || resolver.cache.get(u) === full || (c.name && false)) { if (/@lid$/.test(wid(c.id))) lidByNumber[full] = wid(c.id); return c; }
+    }
+  } catch (e) {}
   return null;
 }
 async function seedLids(numbers) {
