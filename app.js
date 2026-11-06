@@ -9714,7 +9714,7 @@ function askDeleteMsg_(key, cid) {
       <h3 class="text-lg font-bold">Delete this message?</h3>
       <div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}" style="align-self:stretch;max-width:none">${mailEsc_(String(m.text).slice(0, 300))}</div>
       <p class="wa-help">${what}</p>
-      <div class="flex gap-2 justify-end"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Cancel</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}')">Delete</button></div>
+      <div class="flex gap-2 justify-end"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Cancel</button>${mine && canWa ? `<button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}','me')">Delete for me</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}')">Delete for everyone</button>` : `<button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}')">Delete</button>`}</div>
     </div>`;
   modal.classList.remove('hidden'); modal.classList.add('flex');
 }
@@ -9725,7 +9725,7 @@ async function deleteMessage_(key, cid, meOnly) {
   let waNote = 'Removed from the CRM only.';
   if (m.waId || (m.text && s.phone && chatBridge.ready)) {
     try {
-      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, number: s.phone, text: m.text, ts: Math.round(new Date(m.timestamp).getTime() / 1000), fromMe: m.direction === 'OUTGOING', everyone: m.direction === 'OUTGOING', allowMeOnly: !!meOnly }) });
+      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, number: s.phone, text: m.text, ts: Math.round(new Date(m.timestamp).getTime() / 1000), fromMe: m.direction === 'OUTGOING', everyone: m.direction === 'OUTGOING' && meOnly !== 'me', allowMeOnly: !!meOnly }) });
       const j = await r.json().catch(() => ({}));
       if (r.status === 409) { askDeleteFallback_(key, cid, j.error); return; }   // WhatsApp will not delete it for the client: ask before doing less
       if (r.ok && j.success) {

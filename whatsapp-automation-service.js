@@ -398,6 +398,7 @@ const server = http.createServer((req, res) => {
         }
         let msg = await waClient.getMessageById(payload.id).catch(() => null);
         if (!msg) return send(404, { error: 'WhatsApp no longer has this message in its list' });
+        if (msg.id && !msg.id._serialized) { try { msg.id._serialized = payload.id; } catch (e) {} } // the library deletes by id._serialized, which new ids lack
         let contactNumber = '';
         try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
         const other = await resolver.resolveNumber(msg.fromMe ? msg.to : msg.from, contactNumber);
