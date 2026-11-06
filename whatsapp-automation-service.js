@@ -63,6 +63,9 @@ function wid(x) {
   if (x.user && x.server) return x.user + '@' + x.server;
   return '';
 }
+// message.from/to/author can arrive undefined when the Wid has no _serialized: read them from the raw data too
+const fromOf = m => m.from || wid(m._data && m._data.from);
+const toOf = m => m.to || wid(m._data && m._data.to);
 let loggedIdShape = false;
 function msgSerial(m) {
   for (const k of [m && m.id, m && m._data && m._data.id]) {
@@ -92,7 +95,7 @@ async function saveMediaIfAny(msg) {
   try {
     if (!msg.hasMedia) return null;
     const key = msgSerial(msg);
-    if (key && mediaCache.has(key)) return mediaCache.get(key);
+    if (key && mediaCache.has(key)) { const c = mediaCache.get(key); if (c && c.url && fs.existsSync(path.join(MEDIA_DIR, path.basename(c.url)))) return c; mediaCache.delete(key); }
     // the library reads msg.id._serialized, which WhatsApp's new ids no longer carry: put it back or the download asks for id "undefined"
     if (key && msg.id && !msg.id._serialized) { try { msg.id._serialized = key; } catch (e) {} }
     const m = await msg.downloadMedia();
@@ -205,7 +208,7 @@ function calculateLiveSlaTelemetry() {
 
 // Create HTTP Server
 // EGM_RESOLVED: the bridge only answers requests addressed to localhost (blocks DNS-rebinding from a hostile website)
-const HOST_OK = new RegExp('^(localhost|127\.0\.0\.1|\[::1\])(:' + String(PORT) + ')?$', 'i');
+const HOST_OK = new RegExp('^(localhost|127[.]0[.]0[.]1|[[]::1[]])(:' + String(PORT) + ')?$', 'i');
 process.on('unhandledRejection', e => console.log('[beRich Bridge] Unhandled error (kept running): ' + (e && e.message || e)));
 process.on('uncaughtException', e => console.log('[beRich Bridge] Unexpected error (kept running): ' + (e && e.message || e)));
 const server = http.createServer((req, res) => {
@@ -278,7 +281,7 @@ const server = http.createServer((req, res) => {
         Object.keys(lastSeen).forEach(k => { if (!trackedFull.has(k)) delete lastSeen[k]; });
         saveTracked();
         seedLids(raw);
-        automationState.messageLedger = automationState.messageLedger.filter(m => m.direction !== 'INCOMING' || isTracked(m.from));
+        automationState.messageLedger = automationState.messageLedger.filter(m => m.direction === 'INCOMING' ? isTracked(m.from) : isTracked(m.to));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, tracking: trackedNumbers.size }));
       } catch (e) {
@@ -414,7 +417,7 @@ const server = http.createServer((req, res) => {
         if (msg.id && !msg.id._serialized) { try { msg.id._serialized = payload.id; } catch (e) {} } // the library deletes by id._serialized, which new ids lack
         let contactNumber = '';
         try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
-        const other = await resolver.resolveNumber(msg.fromMe ? msg.to : msg.from, contactNumber);
+        const other = await resolver.resolveNumber(msg.fromMe ? toOf(msg) : fromOf(msg), contactNumber);
         if (!isTracked(other)) return send(403, { error: 'Not a CRM client chat' }); // never touch personal chats
         const wantEveryone = !!payload.everyone && !!msg.fromMe;
         // WhatsApp silently falls back to "delete for me" when it will not revoke. Ask first, then verify, so the CRM never claims more than happened.
@@ -564,7 +567,7 @@ const server = http.createServer((req, res) => {
           const sid = msgSerial(sent);
           rememberLid(digits, sent && sent.id && sent.id.remote);
           if (sent && sent.to) resolver.learn(sent.to, digits);
-          if (sid) trackedMsgIds.add(sid);
+          if (sid) { trackedMsgIds.add(sid); seenMsgIds.add(sid); }
           automationState.messageLedger.unshift({ direction: 'OUTGOING', to: digits, text, timestamp, id: sid });
           if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -849,14 +852,25 @@ function rememberLid(full, remote) {
   const r = wid(remote);
   if (r && /@lid$/.test(r) && full) lidByNumber[full] = r;
 }
+// Chat methods (fetchMessages, delete, ...) read chat.id._serialized, which new ids lack: put it back
+function fixChat(c, id) { try { if (c && c.id && typeof c.id === 'object' && !c.id._serialized) c.id._serialized = id || wid(c.id); } catch (e) {} return c; }
 async function chatFor(full) {
+  let phantom = null;
   const tries = [];
   if (lidByNumber[full]) tries.push(lidByNumber[full]);
   tries.push(full + '@c.us');
-  try { const wid = await waClient.getNumberId(full); if (wid && wid._serialized) tries.push(wid._serialized); } catch (e) {}
+  try { const nid = await waClient.getNumberId(full); if (nid && wid(nid)) tries.push(wid(nid)); } catch (e) {}
   try { const res = await waClient.getContactLidAndPhone([full + '@c.us']); const lid = res && res[0] && res[0].lid; if (lid) { tries.unshift(wid(lid)); resolver.learn(wid(lid), full); } } catch (e) {}
   for (const id of [...new Set(tries)]) {
-    try { const c = await waClient.getChatById(id); if (c) { if (/@lid$/.test(id)) lidByNumber[full] = id; return c; } } catch (e) { /* try the next form of the id */ }
+    try {
+      const c = await waClient.getChatById(id);
+      if (c) {
+        const isLid = /@lid$/.test(id);
+        if (isLid) lidByNumber[full] = id;
+        if (isLid || c.lastMessage || c.timestamp) return fixChat(c, id);
+        if (!phantom) phantom = fixChat(c, id); // an empty chat made up for this number: only use it if nothing better exists
+      }
+    } catch (e) { /* try the next form of the id */ }
   }
   // last resort: look through the chat list for the chat that belongs to this number
   try {
@@ -864,10 +878,10 @@ async function chatFor(full) {
     for (const c of chats) {
       if (c.isGroup) continue;
       const u = String(wid(c.id) || '').replace(/@.*/, '');
-      if (u === full || resolver.cache.get(u) === full || (c.name && false)) { if (/@lid$/.test(wid(c.id))) lidByNumber[full] = wid(c.id); return c; }
+      if (u === full || resolver.cache.get(u) === full || (c.name && false)) { if (/@lid$/.test(wid(c.id))) lidByNumber[full] = wid(c.id); return fixChat(c, wid(c.id)); }
     }
   } catch (e) {}
-  return null;
+  return phantom;
 }
 async function seedLids(numbers) {
   if (!waClient || automationState.wa.status !== 'READY') return;
@@ -888,7 +902,7 @@ async function restartWhatsApp(reason) {
   automationState.wa = { status: 'RESTARTING', number: '', qr: '', error: String(reason || '') };
   emitStatus();
   console.log('[beRich Bridge] Restarting WhatsApp: ' + reason);
-  try { if (waClient) await waClient.destroy(); } catch (e) {}
+  try { if (waClient) await Promise.race([waClient.destroy(), new Promise(r => setTimeout(r, 8000))]); } catch (e) {}
   waClient = null; waRetries = 0;
   setTimeout(() => { restarting = false; startWhatsAppClient(); }, 2500);
 }
@@ -935,6 +949,9 @@ function startWhatsAppClient() {
     browserName: 'Chrome',
     puppeteer: { headless: !process.env.WA_SHOW, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800'] }
   });
+  const mine = waClient;
+  const origOn = waClient.on.bind(waClient);
+  waClient.on = (ev, fn) => origOn(ev, (...a) => { if (waClient !== mine) return; return fn(...a); }); // a destroyed client must not touch the new one
   waClient.on('qr', async qr => {
     try { automationState.wa.qr = await QR.toDataURL(qr); automationState.wa.qrAt = Date.now(); automationState.wa.status = 'QR'; emitStatus(); } catch (e) { automationState.wa.error = e.message; }
     console.log('[beRich Bridge] Scan the QR code at http://localhost:' + PORT + '/link');
@@ -950,33 +967,41 @@ function startWhatsAppClient() {
   waClient.on('auth_failure', m => { automationState.wa = { status: 'AUTH_FAILED', number: '', qr: '', error: String(m) }; });
   waClient.on('disconnected', r => { automationState.wa = { status: 'DISCONNECTED', number: '', qr: '', error: String(r) }; emitStatus(); restartWhatsApp('WhatsApp disconnected: ' + r); });
   waClient.on('message_create', async msg => {
-    if (!msg.fromMe || msg.isStatus || String(msg.to).includes('@g.us')) return;
+    if (!msg.fromMe || msg.isStatus || String(toOf(msg)).includes('@g.us')) return;
     let contactNumber = '';
     try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
-    const to = await resolver.resolveNumber(msg.to, contactNumber);
+    const to = await resolver.resolveNumber(toOf(msg), contactNumber);
     if (!isTracked(to)) return;
     const id = msgSerial(msg);
     rememberLid(fullFor(to), msg.id && msg.id.remote);
     if (id) trackedMsgIds.add(id);
     if (id && seenMsgIds.has(id)) { return; }
+    if (id) seenMsgIds.add(id);
     const media = await saveMediaIfAny(msg);
     const entry = { direction: 'OUTGOING', to, text: msg.body || '', timestamp: new Date().toISOString(), id, media };
     automationState.messageLedger.unshift(entry);
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
     emitEvent({ kind: 'out', ...entry });
   });
-  waClient.on('message_ack', (msg, ack) => {
+  waClient.on('message_ack', async (msg, ack) => {
     const id = msgSerial(msg);
-    // after a restart trackedMsgIds is empty: accept any message of mine to a tracked number
-    const toNum = String(msg.to || '').replace(/@.*/, '');
-    if (id && (trackedMsgIds.has(id) || (msg.fromMe && (isTracked(toNum) || /@lid$/.test(String(msg.to || '')))))) { trackedMsgIds.add(id); emitEvent({ kind: 'ack', id, ack }); }
+    if (!id || !msg.fromMe) return;
+    if (!trackedMsgIds.has(id)) {
+      // after a restart trackedMsgIds is empty: accept a message of mine only if it went to a CRM client
+      let contactNumber = '';
+      try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
+      const to = await resolver.resolveNumber(toOf(msg), contactNumber);
+      if (!isTracked(to)) return;
+      trackedMsgIds.add(id);
+    }
+    emitEvent({ kind: 'ack', id, ack });
   });
   waClient.on('message', async msg => {
-    if (msg.fromMe || msg.isStatus || String(msg.from).includes('@g.us')) return; // ignore own, status and group messages
+    if (msg.fromMe || msg.isStatus || String(fromOf(msg)).includes('@g.us')) return; // ignore own, status and group messages
     // WhatsApp often gives a long internal id (@lid) instead of the phone number. Resolve the real number first.
     let contactNumber = '';
     try { const c = await msg.getContact(); contactNumber = (c && c.number) || ''; } catch (e) {}
-    const from = await resolver.resolveNumber(msg.from, contactNumber);
+    const from = await resolver.resolveNumber(fromOf(msg), contactNumber);
     await handleIncoming(msg, from);
   });
   waClient.on('ready', () => { setTimeout(() => backfillTracked('ready'), 3000); });
@@ -1003,7 +1028,7 @@ server.on('error', err => {
   throw err;
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '127.0.0.1', () => { // only this computer can reach the bridge
   startWhatsAppClient();
   console.log(`================================================================`);
   console.log(`[beRich] Phase 2 WhatsApp 24/7 Automation Bridge is ONLINE!`);

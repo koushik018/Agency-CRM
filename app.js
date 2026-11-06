@@ -3726,6 +3726,8 @@ function sendWhatsAppDraft(leadId) {
   if (!Array.isArray(lead.chatHistory)) lead.chatHistory = [];
   const senderName = crmState.activeUser || lead.partner || 'beRich Studio';
   lead.chatHistory.push({
+    cid: 'M' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    owner: chatUser_(),
     direction: 'OUTGOING',
     author: senderName,
     text: text,
@@ -3782,6 +3784,7 @@ function logIncomingWhatsAppMessage(leadId, customText) {
 
   if (!Array.isArray(lead.chatHistory)) lead.chatHistory = [];
   lead.chatHistory.push({
+    cid: 'M' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     direction: 'INCOMING',
     author: lead.clientName,
     text: msgText.trim(),
@@ -4689,7 +4692,7 @@ function renderDossierModalContent(lead) {
               <div class="flex items-center justify-between text-xs">
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                   <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span>Conversation History (${Array.isArray(lead.chatHistory) ? lead.chatHistory.length : 0} messages)</span>
+                  <span>Conversation History (${visibleChat_(lead.chatHistory).length} messages)</span>
                 </span>
                 <button type="button" onclick="logIncomingWhatsAppMessage('${escapeHtml(lead.id)}')"
                   class="px-2.5 py-1 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-semibold flex items-center gap-1 transition shadow-xs cursor-pointer"
@@ -4701,7 +4704,7 @@ function renderDossierModalContent(lead) {
 
               <div class="w-full max-h-52 overflow-y-auto p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-2">
                 ${(() => {
-                  const history = Array.isArray(lead.chatHistory) ? lead.chatHistory : [];
+                  const history = visibleChat_(lead.chatHistory);
                   if (history.length === 0) {
                     return `
                       <div class="py-6 px-4 text-center flex flex-col items-center justify-center gap-1 text-slate-400">
@@ -5656,7 +5659,7 @@ function renderKanbanCardHtml(lead) {
         <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
           ${renderWaitingSlaBadgeHtml(lead, true)}
           ${(() => {
-            const history = Array.isArray(lead.chatHistory) ? lead.chatHistory : [];
+            const history = visibleChat_(lead.chatHistory);
             const lastMsg = history.length > 0 ? history[history.length - 1] : null;
             const isLastIncoming = lastMsg && String(lastMsg.direction).toUpperCase() === 'INCOMING';
             if (isLastIncoming) {
@@ -8393,10 +8396,12 @@ function sameUser_(a, b) { return String(a || '').trim().toLowerCase() === Strin
 
 /* ---------- private chat store (never pushed) ---------- */
 function readJson_(key) { try { return JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { return {}; } }
+function stableCid_(m) { let h = 0; const t = (m.timestamp || '') + '|' + (m.direction || '') + '|' + String(m.text || ''); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return 'h' + (h >>> 0).toString(36); }
 function mergeChats_(a, b) {
   const seen = new Set(); const out = [];
   [...(a || []), ...(b || [])].forEach(m => {
-    const k = m.waId ? 'id|' + m.waId : (m.timestamp || '') + '|' + (m.direction || '') + '|' + String(m.text || '').slice(0, 40);
+    if (!m.cid) m.cid = stableCid_(m); // a message without an id gets the same one every time
+    const k = 'c|' + m.cid;
     if (!seen.has(k)) { seen.add(k); out.push(m); }
   });
   out.sort((x, y) => new Date(x.timestamp || 0) - new Date(y.timestamp || 0));
@@ -8406,14 +8411,14 @@ function persistChats_() {
   try {
     const store = readJson_(CHAT_STORE_KEY);
     (crmState.leads || []).forEach(l => {
-      if (Array.isArray(l.chatHistory) && l.chatHistory.length) store[l.id] = mergeChats_(store[l.id], l.chatHistory);
+      if (Array.isArray(l.chatHistory) && l.chatHistory.length) store[l.id] = mergeChats_(l.chatHistory, store[l.id]); // the live copy wins
     });
     localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(store));
   } catch (e) {}
 }
 function rehydrateChats_() {
   const store = readJson_(CHAT_STORE_KEY);
-  (crmState.leads || []).forEach(l => { if (store[l.id]) l.chatHistory = mergeChats_(l.chatHistory, store[l.id]); (l.chatHistory || []).forEach((m, i) => { if (!m.cid) m.cid = 'c' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 6); }); });
+  (crmState.leads || []).forEach(l => { if (store[l.id]) l.chatHistory = mergeChats_(l.chatHistory, store[l.id]); });
 }
 function visibleChat_(history) {
   const me = chatUser_();
@@ -8520,8 +8525,8 @@ function pushThread_(s, msg) {
     const l = (globalState.leads || []).find(x => x.id === s.leadId); if (!l) return;
     if (!Array.isArray(l.chatHistory)) l.chatHistory = [];
     l.chatHistory.push(msg);
-    l.lastInteractionAt = Date.now(); l.updatedAt = Date.now();
-    l.lastInteractionType = msg.direction === 'INCOMING' ? 'whatsapp_received' : 'whatsapp_sent';
+    const msgMs = new Date(msg.timestamp).getTime() || Date.now();
+    if (msgMs >= (l.lastInteractionAt || 0)) { l.lastInteractionAt = msgMs; l.lastInteractionType = msg.direction === 'INCOMING' ? 'whatsapp_received' : 'whatsapp_sent'; }
     saveToLocalCache();
   } else {
     const store = readJson_(NUM_CHAT_KEY); store[s.key] = mergeChats_(store[s.key], [msg]);
@@ -8530,6 +8535,7 @@ function pushThread_(s, msg) {
 }
 
 function updateThreadMsg_(s, cid, patch) {
+  if (!cid) return null;
   if (s.leadId) { const m = threadOf_(s).find(x => x.cid === cid); if (m) { Object.assign(m, patch); saveToLocalCache(); } return m || null; }
   const store = readJson_(NUM_CHAT_KEY); const m = (store[s.key] || []).find(x => x.cid === cid);
   if (m) { Object.assign(m, patch); try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {} }
@@ -8554,7 +8560,7 @@ function updateByWaId_(waId, patch) {
 }
 
 /* ---------- sessions: one Team History line when a chat starts, one when it ends ---------- */
-function sessionKey_(lead, phone) { return lead ? 'L:' + lead.id : 'N:' + String(phone || '').replace(/\D/g, ''); }
+function sessionKey_(lead, phone) { return lead ? 'L:' + lead.id : 'N:' + cleanWhatsAppPhone(phone); }
 function getSession_(lead, phone) {
   const key = sessionKey_(lead, phone);
   let s = chatSessions.get(key);
@@ -8709,6 +8715,7 @@ function ingestOutgoingSeen_(item) {
   if (seenIncoming_.has(id)) return; seenIncoming_.add(id);
   const digits = String(item.to || '').replace(/\D/g, '');
   const lead = (crmState.leads || []).find(l => { const p = String(l.contactPhone || l.phone || '').replace(/\D/g, ''); return p && (p === digits || p.slice(-10) === digits.slice(-10)); });
+  if (item.id && tombstone_(item.id)) return;
   if (!lead && !chatSessions.has('N:' + digits)) return;
   const s = getSession_(lead || null, digits);
   const text = waSafeText(item.text);
@@ -8717,7 +8724,7 @@ function ingestOutgoingSeen_(item) {
   if (pending) { updateThreadMsg_(s, pending.cid, { status: 'sent', waId: item.id, via: 'WhatsApp Web (confirmed)' }); noteChatEvent_(s, 'sent'); renderWin_(s.key); return; }
   const known = threadOf_(s).find(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && !m.waId && item.id);
   if (known) { updateThreadMsg_(s, known.cid, { waId: item.id }); return; }
-  if (threadOf_(s).some(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 120000)) return;
+  if (!item.id && threadOf_(s).some(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 120000)) return;
   pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp window', text: item.text, timestamp: item.timestamp, status: 'sent', waId: item.id, media: mediaOf_(item) });
   noteChatEvent_(s, 'sent');
   renderWin_(s.key);
@@ -8727,10 +8734,10 @@ function ingestIncoming_(item) {
   if (seenIncoming_.has(seenIncomingKey)) return;
   const digits = String(item.from || '').replace(/\D/g, '');
   const lead = (crmState.leads || []).find(l => { const p = String(l.contactPhone || l.phone || '').replace(/\D/g, ''); return p && (p === digits || p.slice(-10) === digits.slice(-10)); });
+  if (item.id && tombstone_(item.id)) return;
   if (!lead && !chatSessions.has('N:' + digits) && !readJson_(NUM_CHAT_KEY)['N:' + digits]) return; // not a CRM contact and not a chat you opened: ignore completely
   const s = getSession_(lead || null, digits);
   const hist = threadOf_(s);
-  if (item.id && tombstone_(item.id)) return;
   if (item.id ? hist.some(m => m.waId === item.id) : hist.some(m => m.timestamp === item.timestamp || (m.direction === 'INCOMING' && m.text === item.text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 3000))) return;
   seenIncoming_.add(seenIncomingKey);
   pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp, waId: item.id, media: mediaOf_(item) });
@@ -9072,7 +9079,9 @@ async function winSendFileObj_(key, file) {
     const r = await fetch(`http://localhost:${senderPort_()}/api/send-media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, mimetype: file.type || 'application/octet-stream', filename: file.name, data: dataUrl.split(',')[1], caption }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.success) { showCRMToast('Not sent: ' + (j.error || 'the bridge refused it') + '.', 'warning'); return; }
-    pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text: caption, status: 'sent', waId: j.id, media: mediaOf_({ media: j.media }) });
+    const dupe = j.id && threadOf_(s).find(x => x.waId === j.id);
+    if (dupe) updateThreadMsg_(s, dupe.cid, { via: 'WhatsApp (linked)', media: mediaOf_({ media: j.media }), author: chatUser_() });
+    else pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text: caption, status: 'sent', waId: j.id, media: mediaOf_({ media: j.media }) });
     noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
     showCRMToast('Sent ' + file.name + '.', 'check_circle');
   } catch (e) { showCRMToast('Could not reach the bridge.', 'warning'); }
@@ -9539,7 +9548,8 @@ async function mailPoll_() {
       const lead = (crmState.leads || []).find(l => leadEmailOf_(l) && from.includes(leadEmailOf_(l).toLowerCase()));
       if (!lead) continue;
       const s = getSession_(lead, lead.contactPhone || lead.phone || '');
-      pushThread_(s, { direction: 'INCOMING', author: lead.clientName, via: 'Gmail', text: (mailHeader_(m, 'Subject') ? mailHeader_(m, 'Subject') + ': ' : '') + (m.snippet || '') });
+      if (threadOf_(s).some(x => x.waId === 'gmail:' + it.id)) continue;
+      pushThread_(s, { direction: 'INCOMING', author: lead.clientName, via: 'Gmail', waId: 'gmail:' + it.id, text: (mailHeader_(m, 'Subject') ? mailHeader_(m, 'Subject') + ': ' : '') + (m.snippet || '') });
       s.unread += 1; noteChatEvent_(s, 'received'); renderWin_(s.key);
       showCRMToast(`New email from ${lead.clientName}: ${mailHeader_(m, 'Subject') || m.snippet || ''}`.slice(0, 120), 'mail');
       try { if ('Notification' in window && Notification.permission === 'granted') new Notification('Email from ' + lead.clientName, { body: String(mailHeader_(m, 'Subject') || m.snippet || '').slice(0, 120) }); } catch (e) {}
@@ -9723,11 +9733,12 @@ async function deleteMessage_(key, cid, meOnly) {
   const s = chatSessions.get(key); if (!s) return;
   const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
   let waNote = 'Removed from the CRM only.';
-  if (m.waId || (m.text && s.phone && chatBridge.ready)) {
+  if (chatBridge.ready && (m.waId || (m.text && s.phone))) {
     try {
       const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, number: s.phone, text: m.text, ts: Math.round(new Date(m.timestamp).getTime() / 1000), fromMe: m.direction === 'OUTGOING', everyone: m.direction === 'OUTGOING' && meOnly !== 'me', allowMeOnly: !!meOnly }) });
       const j = await r.json().catch(() => ({}));
-      if (r.status === 409) { askDeleteFallback_(key, cid, j.error); return; }   // WhatsApp will not delete it for the client: ask before doing less
+      if (r.status === 409) { askDeleteFallback_(key, cid, j.error); return; }
+      if (r.status === 404) { removeThreadMsg_(s, cid); renderWin_(key); refreshInboxList_(); showCRMToast('WhatsApp no longer had this message, so it was removed from the CRM only.', 'delete'); return; }   // WhatsApp will not delete it for the client: ask before doing less
       if (r.ok && j.success) {
         waNote = j.deleted === 'everyone' ? 'Deleted for everyone in WhatsApp (confirmed) and removed from the CRM.'
           : (m.direction === 'OUTGOING' ? 'Removed from the CRM and your WhatsApp. The client can still see it' + (j.note ? ': ' + j.note + '.' : '.') : 'Removed from the CRM and your WhatsApp. The client keeps their own copy.');
@@ -9747,7 +9758,7 @@ function askDeleteFallback_(key, cid, reason) {
       <h3 class="text-lg font-bold">WhatsApp will not delete this for the client</h3>
       <p class="wa-help">${mailEsc_(reason || 'WhatsApp refused.')}. Nothing was deleted yet.</p>
       <p class="wa-help">You can remove it from the CRM and your own WhatsApp only. The client will still see it.</p>
-      <div class="flex gap-2 justify-end flex-wrap"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Keep it</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}',true)">Remove from CRM and my WhatsApp</button></div>
+      <div class="flex gap-2 justify-end flex-wrap"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Keep it</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}','me')">Remove from CRM and my WhatsApp</button></div>
     </div>`;
   modal.classList.remove('hidden'); modal.classList.add('flex');
 }
@@ -9782,7 +9793,7 @@ async function syncChatFromWhatsApp_(key, quiet) {
         continue;
       }
       pushThread_(s, { direction: dir, author: m.fromMe ? chatUser_() : s.name, via: m.fromMe ? 'WhatsApp (synced)' : undefined, text: (m.hasMedia && !m.text && !(m.media && m.media.url)) ? '(picture or file: open it in WhatsApp)' : m.text, media: mediaOf_(m), timestamp: m.timestamp, waId: m.id, status: m.fromMe ? ackStatus(m.ack) : undefined });
-      changed = true; if (!m.fromMe) newIncoming.push(m.text);
+      changed = true; if (!m.fromMe && Date.now() - new Date(m.timestamp).getTime() < 300000) newIncoming.push(m.text);
     }
     if (changed) { renderWin_(key); try { refreshInboxList_(); } catch (e) {} }
     if (newIncoming.length && quiet !== 'silent') { s.unread += newIncoming.length; noteChatEvent_(s, 'received'); showCRMToast(`New reply from ${s.name}: ${String(newIncoming[newIncoming.length - 1] || '(picture or file)').slice(0, 60)}`, 'chat'); }
@@ -9797,6 +9808,7 @@ setInterval(() => {
 
 /* ---------- delete a whole chat ---------- */
 function clearChatCore_(s) {
+  try { threadOf_(s).forEach(m => { if (m.waId) addTombstone_(m.waId); }); } catch (e) {}
   if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); if (l) { l.chatHistory = []; saveToLocalCache(); } }
   else { const st = readJson_(NUM_CHAT_KEY); delete st[s.key]; try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(st)); } catch (e) {} }
   try { const st2 = readJson_(CHAT_STORE_KEY); if (s.leadId) delete st2[s.leadId]; localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(st2)); } catch (e) {}
@@ -9834,6 +9846,7 @@ async function deleteChatNow_(key) {
 function clearChatCrm_(key) {
   const s = chatSessions.get(key); if (!s) return;
   if (!confirm('Clear all messages of this chat from the CRM on this computer? WhatsApp is not touched.')) return;
+  try { threadOf_(s).forEach(m => { if (m.waId) addTombstone_(m.waId); }); } catch (e) {}
   if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); if (l) { l.chatHistory = []; saveToLocalCache(); } }
   else { const st = readJson_(NUM_CHAT_KEY); delete st[s.key]; try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(st)); } catch (e) {} }
   try { const st2 = readJson_(CHAT_STORE_KEY); if (s.leadId) delete st2[s.leadId]; localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(st2)); } catch (e) {}
