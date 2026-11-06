@@ -313,7 +313,7 @@ const server = http.createServer((req, res) => {
         if (!isTracked(number)) return send(403, { error: 'Not a CRM client chat' });
         if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
         step = 'find chat';
-        const chat = await chatFor(number); if (!chat) return send(404, { error: 'could not open this chat in WhatsApp', step });
+        const chat = await chatFor(number); if (!chat) return send(404, { error: 'could not open this chat in WhatsApp', step, why: chatWhy });
         step = 'read messages';
         const msgs = await chat.fetchMessages({ limit: 30 });
         for (const m of msgs) { const id = msgSerial(m); if (id && m.fromMe) trackedMsgIds.add(id); }
@@ -341,7 +341,7 @@ const server = http.createServer((req, res) => {
         const number = String((JSON.parse(body || '{}')).number || '').replace(/\D/g, '');
         if (!isTracked(number)) return send(403, { error: 'Not a CRM client chat' });
         if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
-        const chat = await chatFor(number); if (!chat) return send(404, { error: 'could not open this chat in WhatsApp' });
+        const chat = await chatFor(number); if (!chat) return send(404, { error: 'could not open this chat in WhatsApp', why: chatWhy });
         const ok = await chat.delete();
         return send(200, { success: !!ok, deleted: 'me' });
       } catch (e) { return send(502, { success: false, error: e.message }); }
@@ -854,12 +854,27 @@ function rememberLid(full, remote) {
 }
 // Chat methods (fetchMessages, delete, ...) read chat.id._serialized, which new ids lack: put it back
 function fixChat(c, id) { try { if (c && c.id && typeof c.id === 'object' && !c.id._serialized) c.id._serialized = id || wid(c.id); } catch (e) {} return c; }
+// Ask WhatsApp's own page for the internal (lid) id of a number. The library's version returns undefined when the id has no _serialized, so read every spelling here.
+async function lidFor(full) {
+  try {
+    const r = await waClient.pupPage.evaluate(async id => {
+      const pick = x => !x ? '' : (typeof x === 'string' ? x : (x._serialized || x.$1 || (x.user && x.server ? x.user + '@' + x.server : '')));
+      const res = await window.WWebJS.enforceLidAndPnRetrieval(id);
+      return { lid: pick(res && res.lid), pn: pick(res && res.phone) };
+    }, full + '@c.us');
+    if (r && r.lid) { resolver.learn(r.lid, full); lidByNumber[full] = r.lid; }
+    return r && r.lid || '';
+  } catch (e) { chatWhy = 'lid lookup: ' + (e && e.message || e); return ''; }
+}
+let chatWhy = '';
 async function chatFor(full) {
+  chatWhy = '';
   let phantom = null;
   const tries = [];
   if (lidByNumber[full]) tries.push(lidByNumber[full]);
   tries.push(full + '@c.us');
   try { const nid = await waClient.getNumberId(full); if (nid && wid(nid)) tries.push(wid(nid)); } catch (e) {}
+  { const l = await lidFor(full); if (l) tries.unshift(l); }
   try { const res = await waClient.getContactLidAndPhone([full + '@c.us']); const lid = res && res[0] && res[0].lid; if (lid) { tries.unshift(wid(lid)); resolver.learn(wid(lid), full); } } catch (e) {}
   for (const id of [...new Set(tries)]) {
     try {
@@ -870,7 +885,7 @@ async function chatFor(full) {
         if (isLid || c.lastMessage || c.timestamp) return fixChat(c, id);
         if (!phantom) phantom = fixChat(c, id); // an empty chat made up for this number: only use it if nothing better exists
       }
-    } catch (e) { /* try the next form of the id */ }
+    } catch (e) { chatWhy += ' | ' + id + ': ' + (e && e.message || e); }
   }
   // last resort: look through the chat list for the chat that belongs to this number
   try {
@@ -880,7 +895,8 @@ async function chatFor(full) {
       const u = String(wid(c.id) || '').replace(/@.*/, '');
       if (u === full || resolver.cache.get(u) === full || (c.name && false)) { if (/@lid$/.test(wid(c.id))) lidByNumber[full] = wid(c.id); return fixChat(c, wid(c.id)); }
     }
-  } catch (e) {}
+  } catch (e) { chatWhy += ' | chat list: ' + (e && e.message || e); }
+  if (!phantom) console.log('[beRich Bridge] Could not open chat for ...' + String(full).slice(-4) + chatWhy);
   return phantom;
 }
 async function seedLids(numbers) {
