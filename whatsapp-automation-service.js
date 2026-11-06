@@ -278,16 +278,18 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/chat-history' && req.method === 'GET') {
     (async () => {
       const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+      let step = '';
       try {
         const number = (url.searchParams.get('number') || '').replace(/\D/g, '');
         if (!isTracked(number)) return send(403, { error: 'Not a CRM client chat' });
         if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
-        const wid = await waClient.getNumberId(number); if (!wid) return send(404, { error: 'That number is not on WhatsApp' });
-        const chat = await waClient.getChatById(wid._serialized);
+        step = 'find chat';
+        const chat = await chatFor(number); if (!chat) return send(404, { error: 'could not open this chat in WhatsApp', step });
+        step = 'read messages';
         const msgs = await chat.fetchMessages({ limit: 30 });
         for (const m of msgs) { const id = msgSerial(m); if (id && m.fromMe) trackedMsgIds.add(id); }
         return send(200, { success: true, messages: msgs.filter(m => !m.isStatus).map(m => ({ id: msgSerial(m), fromMe: !!m.fromMe, text: m.body || '', timestamp: new Date((m.timestamp || 0) * 1000).toISOString(), type: m.type, hasMedia: !!m.hasMedia, ack: m.ack })) });
-      } catch (e) { return send(502, { error: e.message }); }
+      } catch (e) { return send(502, { error: (e && e.message && e.message.length > 3 ? e.message : 'WhatsApp page error (' + String(e && e.message || e) + ')'), step: typeof step === 'string' ? step : undefined }); }
     })();
     return;
   }
@@ -302,8 +304,7 @@ const server = http.createServer((req, res) => {
         const number = String((JSON.parse(body || '{}')).number || '').replace(/\D/g, '');
         if (!isTracked(number)) return send(403, { error: 'Not a CRM client chat' });
         if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
-        const wid = await waClient.getNumberId(number); if (!wid) return send(404, { error: 'That number is not on WhatsApp' });
-        const chat = await waClient.getChatById(wid._serialized);
+        const chat = await chatFor(number); if (!chat) return send(404, { error: 'could not open this chat in WhatsApp' });
         const ok = await chat.delete();
         return send(200, { success: !!ok, deleted: 'me' });
       } catch (e) { return send(502, { success: false, error: e.message }); }
@@ -367,8 +368,7 @@ const server = http.createServer((req, res) => {
         if (!payload.id) {
           // older CRM messages have no WhatsApp id: find the newest message with the same text near that time in this client's chat
           if (!isTracked(payload.number)) return send(403, { error: 'Not a CRM client chat' });
-          const wid0 = await waClient.getNumberId(String(payload.number).replace(/\D/g, '')).catch(() => null);
-          const chat0 = wid0 && await waClient.getChatById(wid0._serialized).catch(() => null);
+          const chat0 = await chatFor(String(payload.number).replace(/\D/g, ''));
           const list0 = chat0 ? await chat0.fetchMessages({ limit: 60 }).catch(() => []) : [];
           const want = String(payload.text).trim();
           const hit = list0.filter(m => !!m.fromMe === !!payload.fromMe && String(m.body || '').trim() === want && (!payload.ts || Math.abs(m.timestamp - payload.ts) < 900)).sort((x, y) => y.timestamp - x.timestamp)[0];
@@ -527,6 +527,7 @@ const server = http.createServer((req, res) => {
         const digits = String(to).replace(/\D/g, '');
         waClient.sendMessage(digits + '@c.us', text).then(sent => {
           const sid = msgSerial(sent);
+          rememberLid(digits, sent && sent.id && sent.id.remote);
           if (sent && sent.to) resolver.learn(sent.to, digits);
           if (sid) trackedMsgIds.add(sid);
           automationState.messageLedger.unshift({ direction: 'OUTGOING', to: digits, text, timestamp, id: sid });
@@ -782,6 +783,7 @@ async function handleIncoming(msg, from) {
   automationState.messageLedger.unshift(entry);
   if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
   const full = fullFor(from);
+  rememberLid(full, msg.id && msg.id.remote);
   if (!lastSeen[full] || tsSec > lastSeen[full]) { lastSeen[full] = tsSec; saveTracked(); }
   emitEvent({ kind: 'in', ...entry });
 }
@@ -794,9 +796,8 @@ async function backfillTracked(reason) {
   try {
     for (const full of [...trackedFull].slice(0, 30)) {
       try {
-        const wid = await waClient.getNumberId(full);
-        if (!wid) continue;
-        const chat = await waClient.getChatById(wid._serialized);
+        const chat = await chatFor(full);
+        if (!chat) continue;
         const msgs = await chat.fetchMessages({ limit: 20 });
         const since = lastSeen[full] || Math.floor(Date.now() / 1000);
         const fresh = msgs.filter(m => !m.fromMe && !m.isStatus && m.timestamp > since).sort((x, y) => x.timestamp - y.timestamp);
@@ -808,13 +809,28 @@ async function backfillTracked(reason) {
 setInterval(() => backfillTracked('timer'), 30000);
 
 
+const lidByNumber = {}; // full phone number -> '1234567890@lid', learned from messages and lookups
+function rememberLid(full, remote) {
+  const r = remote && (remote._serialized || remote);
+  if (r && /@lid$/.test(String(r)) && full) lidByNumber[full] = String(r);
+}
+async function chatFor(full) {
+  const tries = [];
+  if (lidByNumber[full]) tries.push(lidByNumber[full]);
+  tries.push(full + '@c.us');
+  try { const wid = await waClient.getNumberId(full); if (wid && wid._serialized) tries.push(wid._serialized); } catch (e) {}
+  for (const id of [...new Set(tries)]) {
+    try { const c = await waClient.getChatById(id); if (c) { if (/@lid$/.test(id)) lidByNumber[full] = id; return c; } } catch (e) { /* try the next form of the id */ }
+  }
+  return null;
+}
 async function seedLids(numbers) {
   if (!waClient || automationState.wa.status !== 'READY') return;
   for (const full of numbers.slice(0, 30)) {
     try {
       const res = await waClient.getContactLidAndPhone([full + '@c.us']);
       const lid = res && res[0] && res[0].lid;
-      if (lid) resolver.learn(lid, full);
+      if (lid) { resolver.learn(lid, full); rememberLid(full, lid); }
     } catch (e) { /* best effort */ }
   }
 }
@@ -880,6 +896,7 @@ function startWhatsAppClient() {
     const to = await resolver.resolveNumber(msg.to, contactNumber);
     if (!isTracked(to)) return;
     const id = msgSerial(msg);
+    rememberLid(fullFor(to), msg.id && msg.id.remote);
     if (id) trackedMsgIds.add(id);
     if (id && seenMsgIds.has(id)) { return; }
     const media = await saveMediaIfAny(msg);

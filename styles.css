@@ -2123,3 +2123,9 @@ details.wa-collapsible[open] > summary { margin-bottom: 8px; }
 .wa-media { display: block; max-width: 100%; max-height: 260px; border-radius: 12px; margin: 4px 0; object-fit: contain; background: var(--uv-panel-2); }
 .wa-file { display: inline-block; padding: 6px 12px; margin: 4px 0; border-radius: 9999px; border: 1.5px solid var(--uv-accent); color: var(--uv-accent-text); font-weight: 700; font-size: 14px; text-decoration: none; }
 .wa-msg-out .wa-file { color: #3B1E8F; border-color: #3B1E8F; }
+
+/* v75: deal Remove button and Demo badge */
+.deal-remove-btn { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 9999px; border: 1px solid var(--uv-bad); background: transparent; color: var(--uv-bad); cursor: pointer; opacity: 0; transition: opacity 120ms; }
+.kanban-deal-card:hover .deal-remove-btn, .deal-remove-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .deal-remove-btn { opacity: 1; } }
+.deal-demo-badge { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 9999px; background: var(--uv-accent-soft); color: var(--uv-ink); border: 1px solid var(--uv-rule-2); }

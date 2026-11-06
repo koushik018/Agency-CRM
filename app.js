@@ -112,6 +112,7 @@ function loadDemoStudioDeals() {
   ];
 
   if (!Array.isArray(crmState.leads)) crmState.leads = [];
+  demoDeals.forEach(d => { try { crmState.deletedLeadIds.delete(String(d.id)); saveDeletedIds_(); } catch (e) {} });
   demoDeals.forEach(d => {
     const existingIdx = crmState.leads.findIndex(existing => existing.id === d.id);
     if (existingIdx !== -1) {
@@ -4303,7 +4304,7 @@ function renderDossierModalContent(lead) {
           <select onchange="updateDossierStage('${lead.id}', this.value)" class="h-9 px-3 rounded-full bg-[#13131C] text-[#34D399] font-label-code text-xs font-bold focus:outline-none border border-teal-500/30">
             ${['Identified', 'In Discussion', 'Sample Cut', 'Approved', 'Closed Won'].map(st => `<option value="${st}" ${lead.stage === st ? 'selected' : ''}>Stage: ${st}</option>`).join('')}
           </select>
-          <button onclick="deleteLeadCard('${lead.id}')" class="w-9 h-9 rounded-full bg-[#13131C] hover:bg-[#4C1323] text-[#8E92A4] hover:text-[#FF6B8B] flex items-center justify-center transition-colors flex-shrink-0" title="Delete Project">
+          <button onclick="askDeleteDeal_('${lead.id}')" class="w-9 h-9 rounded-full bg-[#13131C] hover:bg-[#4C1323] text-[#8E92A4] hover:text-[#FF6B8B] flex items-center justify-center transition-colors flex-shrink-0" title="Delete Project">
             <span class="material-symbols-outlined text-[17px]">delete</span>
           </button>
           <button onclick="closeModal('client-dossier-modal')" class="w-9 h-9 rounded-full bg-[#13131C] hover:bg-[#2B2D3E] text-[#8E92A4] hover:text-white flex items-center justify-center transition-colors flex-shrink-0" title="Close modal">
@@ -5586,7 +5587,11 @@ function renderKanbanCardHtml(lead) {
           <h4 class="kanban-card-title kanban-wrap-text font-headline-sm text-sm font-semibold text-white group-hover:text-[#34D399] transition-colors">${escapeHtml(lead.clientName)}</h4>
           <p class="kanban-wrap-text font-label-code text-[11px] text-[#8E92A4]">${escapeHtml(lead.handle)}</p>
         </div>
-        <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-[#252636] text-[#B8BCCF] font-medium flex-shrink-0">${escapeHtml(lead.country)}</span>
+        <span class="flex items-center gap-1 flex-shrink-0">
+          ${isDemoLead_(lead) ? '<span class="deal-demo-badge">Demo</span>' : ''}
+          <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-[#252636] text-[#B8BCCF] font-medium">${escapeHtml(lead.country)}</span>
+          <button type="button" class="deal-remove-btn" title="Remove this deal" onclick="event.stopPropagation(); askDeleteDeal_('${escapeHtml(lead.id)}')">Remove</button>
+        </span>
       </div>
 
       <!-- Service Pill -->
@@ -9824,6 +9829,67 @@ function clearChatCrm_(key) {
   try { const st2 = readJson_(CHAT_STORE_KEY); if (s.leadId) delete st2[s.leadId]; localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(st2)); } catch (e) {}
   renderWin_(key); refreshInboxList_();
   showCRMToast('Chat cleared in the CRM.', 'delete');
+}
+
+
+/* ---------- remove deals: one deal, or only the demo deals ---------- */
+function isDemoLead_(l) { return !!l && (/^DEAL-DEMO-/.test(String(l.id)) || l.demo === true); }
+function dealModal_() {
+  let modal = document.getElementById('crm-deal-del-modal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'crm-deal-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
+  return modal;
+}
+function askDeleteDeal_(leadId) {
+  const l = (globalState.leads || []).find(x => x.id === leadId); if (!l) return;
+  const modal = dealModal_();
+  const hasChat = Array.isArray(l.chatHistory) && l.chatHistory.length > 0;
+  modal.innerHTML = `
+    <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-deal-del-modal')"></div>
+    <div class="relative w-full max-w-md neo-modal p-6 z-10 flex flex-col gap-3">
+      <h3 class="text-lg font-bold">Remove this deal?</h3>
+      <p class="wa-help"><b>${mailEsc_(l.clientName)}</b> (${mailEsc_(formatINR(l.dealValue))}, ${mailEsc_(l.stage || '')}) will be removed on every device.${hasChat ? ' Its chat on this computer is removed too.' : ''} Payments recorded on it go with it. This cannot be undone.${isDemoLead_(l) ? ' This is a demo deal.' : ''}</p>
+      <div class="flex gap-2 justify-end"><button type="button" class="wa-chip" onclick="closeModal('crm-deal-del-modal')">Keep it</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteDealNow_('${escapeHtml(leadId)}')">Remove deal</button></div>
+    </div>`;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+function forgetDealChat_(leadId) {
+  try { const st = readJson_(CHAT_STORE_KEY); delete st[leadId]; localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(st)); } catch (e) {}
+  try { if (chatSessions.has('L:' + leadId)) endChat_('L:' + leadId, { silent: true, skipPush: true }); } catch (e) {}
+}
+function deleteDealNow_(leadId) {
+  closeModal('crm-deal-del-modal');
+  forgetDealChat_(leadId);
+  deleteLeadCard(leadId);
+  try { refreshInboxList_(); } catch (e) {}
+}
+function askDeleteDemoDeals() {
+  const demos = (globalState.leads || []).filter(isDemoLead_);
+  if (!demos.length) { showCRMToast('There are no demo deals to remove.', 'info'); return; }
+  const real = (globalState.leads || []).length - demos.length;
+  const modal = dealModal_();
+  modal.innerHTML = `
+    <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-deal-del-modal')"></div>
+    <div class="relative w-full max-w-md neo-modal p-6 z-10 flex flex-col gap-3">
+      <h3 class="text-lg font-bold">Delete the ${demos.length} demo deal${demos.length === 1 ? '' : 's'}?</h3>
+      <p class="wa-help">These will be removed on every device:</p>
+      <ul class="wa-steps" style="font-size:14px">${demos.map(d => `<li>${mailEsc_(d.clientName)}</li>`).join('')}</ul>
+      <p class="wa-help"><b>Your ${real} real deal${real === 1 ? '' : 's'} ${real === 1 ? 'is' : 'are'} not touched.</b> You can load the demo deals again any time.</p>
+      <div class="flex gap-2 justify-end"><button type="button" class="wa-chip" onclick="closeModal('crm-deal-del-modal')">Cancel</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteDemoDealsNow_()">Delete demo deals</button></div>
+    </div>`;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+function deleteDemoDealsNow_() {
+  closeModal('crm-deal-del-modal');
+  const demos = (globalState.leads || []).filter(isDemoLead_);
+  if (!demos.length) return;
+  demos.forEach(l => { globalState.deletedLeadIds.add(String(l.id)); forgetDealChat_(l.id); });
+  globalState.leads = globalState.leads.filter(l => !isDemoLead_(l));
+  saveDeletedIds_(); saveToLocalCache();
+  recordStudioActivity('Removed demo deals', `${chatUser_()} deleted ${demos.length} demo deal${demos.length === 1 ? '' : 's'}`, false);
+  try { pushToGitHubDatabase(`${getActiveStudioUser()}: Removed ${demos.length} demo deals`); } catch (e) {}
+  try { syncGlobalConfigToSheet(); } catch (e) {}
+  renderKanban(); renderAll(); try { refreshInboxList_(); } catch (e) {}
+  showCRMToast(`${demos.length} demo deal${demos.length === 1 ? '' : 's'} removed. Real deals were not touched.`, 'delete');
 }
 
 /* ---------- keep chats out of GitHub, and keep them after a pull ---------- */

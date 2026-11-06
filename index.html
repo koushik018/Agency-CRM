@@ -34,7 +34,7 @@
     })();
   </script>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-  <link href="styles.css?v=20261103_v74" rel="stylesheet"/>
+  <link href="styles.css?v=20261103_v75" rel="stylesheet"/>
 
   <script src="https://cdn.tailwindcss.com"></script>
 
@@ -830,6 +830,10 @@
                 <span class="material-symbols-outlined text-[14px]">auto_fix</span>
                 <span>+ Load Demo Deals</span>
               </button>
+              <button type="button" onclick="askDeleteDemoDeals()" class="text-xs font-semibold text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1.5 px-3 py-1 rounded-full" title="Removes only the demo deals. Real deals are never touched.">
+                <span class="material-symbols-outlined text-[14px]">delete_sweep</span>
+                <span>Delete demo deals</span>
+              </button>
               <button type="button" onclick="resetAllKanbanColumnWidths()" class="text-emerald-400 hover:underline">Reset Column Widths</button>
             </div>
           </div>
@@ -1256,7 +1260,7 @@
 
     <!-- OFFLINE CLIENT-SIDE OCR ENGINE (Tesseract.js v5 - 100% In-Browser Privacy) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="app.js?v=20261103_v74"></script>
+  <script src="app.js?v=20261103_v75"></script>
 
 </body>
 
