@@ -80,12 +80,14 @@ async function saveMediaIfAny(msg) {
     if (!msg.hasMedia) return null;
     const key = msgSerial(msg);
     if (key && mediaCache.has(key)) return mediaCache.get(key);
+    // the library reads msg.id._serialized, which WhatsApp's new ids no longer carry: put it back or the download asks for id "undefined"
+    if (key && msg.id && !msg.id._serialized) { try { msg.id._serialized = key; } catch (e) {} }
     const m = await msg.downloadMedia();
     if (!m || !m.data) return null;
     const saved = saveMediaFile(m.mimetype, m.data, m.filename);
     if (key && saved) mediaCache.set(key, saved);
     return saved;
-  } catch (e) { return null; }
+  } catch (e) { console.log('[beRich Bridge] Could not download a picture/file: ' + (e && e.message || e)); return null; }
 }
 const ALLOWED_ORIGINS = [
   /^https:\/\/koushik018\.github\.io$/,
