@@ -976,6 +976,8 @@ function startWhatsAppClient() {
     puppeteer: { headless: !process.env.WA_SHOW, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800'] }
   });
   const mine = waClient;
+  // WhatsApp Web sometimes renames the page module the library uses to set the linked-device name: that must never stop the bridge from starting
+  try { const origSet = waClient.setDeviceName.bind(waClient); waClient.setDeviceName = async (...a) => { try { await origSet(...a); } catch (e) { console.log('[beRich Bridge] Could not set the linked-device name (ignored): ' + (e && e.message || e)); } }; } catch (e) {}
   const origOn = waClient.on.bind(waClient);
   waClient.on = (ev, fn) => origOn(ev, (...a) => { if (waClient !== mine) return; return fn(...a); }); // a destroyed client must not touch the new one
   waClient.on('qr', async qr => {
