@@ -237,6 +237,17 @@ const server = http.createServer((req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  if (url.pathname === '/api/window' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', async () => {
+      const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      try { const p = JSON.parse(body || '{}'); await setWaWindow(!!p.show); return send(200, { success: true, visible: !!p.show }); }
+      catch (e) { return send(502, { success: false, error: e.message }); }
+    });
+    return;
+  }
+
   // Put text into the message box of the real WhatsApp window and open that chat. Nothing is sent: the person presses Enter.
   if (url.pathname === '/api/draft' && req.method === 'POST') {
     let body = '';
@@ -250,7 +261,7 @@ const server = http.createServer((req, res) => {
         if (!digits || !text) return send(400, { error: 'Missing "to" or "text"' });
         if (!waClient || automationState.wa.status !== 'READY') return send(503, { status: 'NOT_LINKED', error: 'WhatsApp is not linked.' });
         await waClient.interface.openChatWindow(digits + '@c.us');
-        await waClient.pupPage.bringToFront().catch(() => {});
+        await setWaWindow(true).catch(() => {}); // the original WhatsApp window comes on screen so you can check it and press Enter
         await new Promise(r => setTimeout(r, 700));
         await waClient.pupPage.evaluate(t => {
           const box = document.querySelector('footer div[contenteditable="true"]') || document.querySelector('div[contenteditable="true"][data-tab="10"]');
@@ -918,6 +929,17 @@ async function seedLids(numbers) {
       if (lid) { resolver.learn(lid, full); rememberLid(full, lid); }
     } catch (e) { /* best effort */ }
   }
+}
+// Show the WhatsApp browser window on screen, or move it out of sight. Only the 'Original WhatsApp window' mode needs it visible.
+async function setWaWindow(show) {
+  const pg = waClient && waClient.pupPage; if (!pg) throw new Error('WhatsApp window is not open yet');
+  const cdp = await pg.target().createCDPSession();
+  try {
+    const { windowId } = await cdp.send('Browser.getWindowForTarget');
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } });
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: show ? { left: 60, top: 40, width: 1100, height: 800 } : { left: -3000, top: -3000, width: 1100, height: 800 } });
+  } finally { try { await cdp.detach(); } catch (e) {} }
+  if (show) { try { await pg.bringToFront(); } catch (e) {} }
 }
 let waClient = null;
 let waRetries = 0;

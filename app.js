@@ -8663,7 +8663,8 @@ function openFloating_(url, name) {
 /* ---------- send mode: official WhatsApp (default) or the linked bridge ---------- */
 function getSendMode_() { const m = loadWaPrefs_().sendMode; return m === 'bridge' || m === 'window' ? m : 'official'; }
 function effectiveSendMode_() { const m = loadWaPrefs_().sendMode; if (m === 'bridge' || m === 'window' || m === 'official') return m; return chatBridge.ready ? 'bridge' : 'official'; }
-function setSendMode(v) { v = (v === 'bridge' || v === 'window') ? v : 'official'; saveWaPrefs_({ sendMode: v }); showCRMToast(v === 'bridge' ? 'Sending automatically through the bridge.' : v === 'window' ? 'Messages are placed in the original WhatsApp window. You press Enter there.' : 'Sending with official WhatsApp Web (you press send).', 'check_circle'); }
+function showWaWindow_(show) { try { fetch(`http://localhost:${senderPort_()}/api/window`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ show: !!show }) }).catch(() => {}); } catch (e) {} }
+function setSendMode(v) { v = (v === 'bridge' || v === 'window') ? v : 'official'; saveWaPrefs_({ sendMode: v }); showWaWindow_(v === 'window'); showCRMToast(v === 'bridge' ? 'Sending automatically through the bridge.' : v === 'window' ? 'Messages are placed in the original WhatsApp window. You press Enter there.' : 'Sending with official WhatsApp Web (you press send).', 'check_circle'); }
 
 /* ---------- bridge status and incoming messages ---------- */
 function trackedNumbers_() {
@@ -8685,6 +8686,7 @@ async function pollBridge_() {
     const wa = (data.state && data.state.wa) || {};
     chatBridge = { status: wa.status || 'ON', number: wa.number || '', ready: wa.status === 'READY' };
     bridgeMisses_ = 0;
+    if (chatBridge.ready && !pollBridge_.syncedWin) { pollBridge_.syncedWin = true; showWaWindow_(getSendMode_() === 'window'); } // window on screen only in "Original WhatsApp window" mode
     connectBridgeEvents_();
     (data.state?.messageLedger || []).forEach(item => { if (item.direction === 'INCOMING') ingestIncoming_(item); else if (item.direction === 'OUTGOING') ingestOutgoingSeen_(item); });
   } catch (e) { bridgeMisses_ = (bridgeMisses_ || 0) + 1; if (bridgeMisses_ >= 2) chatBridge = { status: 'OFF', number: '', ready: false }; }
