@@ -2063,3 +2063,10 @@ details.wa-collapsible[open] > summary { margin-bottom: 8px; }
 .mail-unread .mail-subj { font-weight: 700; }
 .mail-meta { font-size: 13px; line-height: 1.5; color: var(--uv-ink-2); padding-bottom: 8px; border-bottom: 1px solid var(--uv-rule); margin-bottom: 8px; }
 .mail-text { white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 14px; line-height: 1.55; max-height: 300px; overflow-y: auto; color: var(--uv-ink); background: var(--uv-panel-2); padding: 10px; border-radius: 12px; }
+
+/* v66: reply helpers and inline log box */
+.wa-reply-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.wa-reply-actions button { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; border: 1.5px solid var(--uv-accent); background: var(--uv-panel); color: var(--uv-accent-text); cursor: pointer; }
+.wa-reply-actions button:hover { background: var(--uv-accent-soft); }
+.chat-logbox { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: var(--uv-panel-2); border: 1px dashed var(--uv-rule-2); }
+.chat-logbox.hidden { display: none; }

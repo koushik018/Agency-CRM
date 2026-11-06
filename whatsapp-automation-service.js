@@ -23,7 +23,10 @@ const https = require('https');
 const PORT = process.env.PORT || 3030;
 // Privacy: the bridge keeps ONLY messages from numbers the CRM has told it to track (saved clients and chats you opened).
 // Everything else on this phone (family, friends, groups) is dropped the moment it arrives and is never stored or shown.
+const TRACK_FILE = path.join(__dirname, 'tracked-numbers.json');
 let trackedNumbers = new Set();
+try { trackedNumbers = new Set(JSON.parse(fs.readFileSync(TRACK_FILE, 'utf-8'))); } catch (e) {}
+function saveTracked() { try { fs.writeFileSync(TRACK_FILE, JSON.stringify([...trackedNumbers]), 'utf-8'); } catch (e) {} }
 const sseClients = new Set();
 const trackedMsgIds = new Set();
 function emitEvent(ev) {
@@ -47,6 +50,7 @@ const automationState = {
   startedAt: new Date().toISOString(),
   pairedNumber: '',
   wa: { status: 'NOT_STARTED', number: '', qr: '', error: '' },
+  ignoredMessages: 0,
   activePartners: ['koushik', 'bharagav', 'kiran'],
   slaThresholdHours: {
     prompt: 2,
@@ -196,6 +200,7 @@ const server = http.createServer((req, res) => {
       try {
         const nums = (JSON.parse(body || '{}').numbers || []).map(last10).filter(x => x.length >= 7);
         trackedNumbers = new Set(nums);
+        saveTracked();
         automationState.messageLedger = automationState.messageLedger.filter(m => m.direction !== 'INCOMING' || isTracked(m.from));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, tracking: trackedNumbers.size }));
@@ -641,7 +646,7 @@ function startWhatsAppClient() {
     // WhatsApp sometimes gives a long internal id (ending @lid) instead of the phone number. Ask for the real number.
     let from = String(msg.from).replace(/@.*/, '');
     try { const c = await msg.getContact(); if (c && c.number) from = String(c.number).replace(/\D/g, ''); } catch (e) {}
-    if (!isTracked(from)) return; // not a CRM contact: discard immediately
+    if (!isTracked(from)) { automationState.ignoredMessages += 1; return; } // not a CRM contact: only counted, never read or kept
     const entry = { direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString() };
     automationState.messageLedger.unshift(entry);
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();

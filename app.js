@@ -8552,6 +8552,7 @@ function getSession_(lead, phone) {
     s = { key, leadId: lead ? lead.id : '', name: lead ? lead.clientName : (num ? '+' + num : 'Unknown number'), phone: num,
           sender: getActiveSender_().label, startedAt: Date.now(), lastAt: Date.now(), sent: 0, received: 0, unread: 0, logged: false };
     chatSessions.set(key, s);
+    setTimeout(syncTracking_, 0);
   }
   return s;
 }
@@ -8603,6 +8604,7 @@ function notifyIncoming_(lead, text, phone) {
   noteChatEvent_(s, 'received');
   showCRMToast(`New reply from ${s.name}: ${String(text || '').slice(0, 60)}`, 'chat');
   try { if ('Notification' in window && Notification.permission === 'granted') new Notification(`Reply from ${s.name}`, { body: String(text || '').slice(0, 120) }); } catch (e) {}
+  try { openChatWindow(s.leadId, s.phone, { quiet: true }); } catch (e) {}
   renderWin_(s.key);
 }
 function enableReplyAlerts() {
@@ -8656,6 +8658,10 @@ function bridgeText_() {
   return `Bridge: ${chatBridge.status}`;
 }
 let bridgeES = null, bridgeESPort = 0;
+function syncTracking_() {
+  try { fetch(`http://localhost:${senderPort_()}/api/track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numbers: trackedNumbers_() }) }).catch(() => {}); } catch (e) {}
+}
+setInterval(syncTracking_, 20000);
 function connectBridgeEvents_() {
   const port = senderPort_();
   if (bridgeES && bridgeESPort === port) return;
@@ -8663,6 +8669,7 @@ function connectBridgeEvents_() {
     if (bridgeES) bridgeES.close();
     bridgeES = new EventSource(`http://localhost:${port}/api/events`);
     bridgeESPort = port;
+    bridgeES.onopen = () => syncTracking_();
     bridgeES.onmessage = e => { try { handleBridgeEvent_(JSON.parse(e.data)); } catch (x) {} };
   } catch (e) {}
 }
@@ -8860,6 +8867,7 @@ function openChatWindow(leadId, phone, opts) {
             </div>
           </div>
         </details>
+        <div class="chat-logbox hidden"><textarea class="wa-input chat-input" data-role="logtext" rows="2" placeholder="Paste what the client wrote"></textarea><div class="flex gap-1.5"><button type="button" class="wa-chip wa-chip-on" onclick="winSaveLoggedReply_('${s.key}')">Save reply</button><button type="button" class="wa-chip" onclick="this.closest('.chat-logbox').classList.add('hidden')">Cancel</button></div></div>
         <textarea class="wa-input chat-input" data-role="input" rows="3" placeholder="Type your message"></textarea>
         <div class="flex flex-wrap gap-1.5">
           <button type="button" class="wa-chip wa-chip-on" onclick="winSend_('${s.key}')">Send</button>
@@ -8877,8 +8885,7 @@ function openChatWindow(leadId, phone, opts) {
   if (opts && opts.full) win.classList.add('chat-win-full');
   s.unread = 0;
   renderWin_(s.key);
-  win.querySelector('[data-role="input"]').focus();
-  document.getElementById('crm-chat-launcher')?.classList.add('hidden');
+  if (!(opts && opts.quiet)) { win.querySelector('[data-role="input"]').focus(); document.getElementById('crm-chat-launcher')?.classList.add('hidden'); }
   updateChatLauncher_();
   pollBridge_();
 }
@@ -8899,6 +8906,7 @@ function renderWin_(key) {
   const box = win.querySelector('.chat-thread');
   const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const hist = visibleChat_(threadOf_(s)).slice(-40);
+  const lastIn = [...hist].reverse().find(x => x.direction === 'INCOMING');
   box.innerHTML = hist.length ? hist.map(m => {
     const mine = m.direction === 'OUTGOING';
     const when = m.timestamp ? new Date(m.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
@@ -8907,7 +8915,9 @@ function renderWin_(key) {
     else if (mine && m.status === 'read') st = '<div class="wa-msg-status wa-read">\u2713\u2713 Read</div>';
     else if (mine && m.status === 'delivered') st = '<div class="wa-msg-status">\u2713\u2713 Delivered</div>';
     else if (mine && m.status === 'sent') st = '<div class="wa-msg-status">\u2713 Sent</div>';
-    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span></div><div>${esc(String(m.text).slice(0, 600))}</div>${st}</div>`;
+    const isLastIn = !mine && m === lastIn;
+    const act = isLastIn ? `<div class="wa-reply-actions"><button type="button" onclick="winQuickReply_('${s.key}')">Quick reply</button><button type="button" onclick="winAiReply_('${s.key}','claude')">Reply with Claude</button><button type="button" onclick="winAiReply_('${s.key}','gemini')">Reply with Gemini</button></div>` : '';
+    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span></div><div>${esc(String(m.text).slice(0, 600))}</div>${st}${act}</div>`;
   }).join('') : '<span class="wa-help">No messages yet. Your chat history is stored only on this computer.</span>';
   box.scrollTop = box.scrollHeight;
   win.querySelector('.chat-bridge-chip').textContent = bridgeText_();
@@ -8959,6 +8969,39 @@ async function winDraft_(key) {
   else showCRMToast('Could not reach the WhatsApp window. Check the bridge window.', 'warning');
 }
 
+
+/* ---------- answer a client message: quick rule-based reply, or AI ---------- */
+function lastClientMessage_(s) { const h = visibleChat_(threadOf_(s)).filter(m => m.direction === 'INCOMING'); return h.length ? h[h.length - 1].text : ''; }
+function suggestReply_(s, text, tone) {
+  const c = waCtx_(s.leadId || ''); const t = String(text || '').toLowerCase();
+  const formal = tone === 'ceo' || tone === 'pro';
+  const hi = formal ? `Hello ${c.n},` : `Hi ${c.n}!`;
+  const link = c.portfolio ? `\n\nOur work: ${c.portfolio}` : '';
+  if (/link|portfolio|work|sample|example|reel|showreel/.test(t)) return `${hi}\n\n${formal ? 'Please find our recent work below.' : 'Sure, here is some of our recent work.'}${link || '\n\n(Add your portfolio link in the Command Center so it can be included here.)'}\n\n${formal ? 'Let me know which style suits your brand and we will plan the next step.' : 'Tell me which style you like and we will take it from there.'}`;
+  if (/price|cost|rate|charge|budget|quote|how much|package/.test(t)) return `${hi}\n\n${formal ? 'Pricing depends on length, number of videos and turnaround.' : 'Pricing depends on how many videos, length and delivery time.'} ${formal ? 'Could you share the scope and your preferred timeline so we can send an exact quote?' : 'Tell me roughly what you need and by when, and I will send an exact quote.'}`;
+  if (/yes|ok|okay|sure|interested|proceed|go ahead|let's|lets|confirm|done|agreed/.test(t)) return `${hi}\n\n${formal ? 'Thank you. To begin, please share the raw footage or brief, the deadline and any references.' : 'Great! To start, please send the footage or brief, your deadline and any references you like.'} ${formal ? 'We will confirm the plan shortly.' : 'We will confirm the plan right after.'}`;
+  if (/thank|thanks|great|nice|awesome|love/.test(t)) return `${hi}\n\n${formal ? 'Thank you, we appreciate it. Please let us know if there is anything else we can do.' : 'Thank you, happy to hear that! Tell us if you want anything changed.'}`;
+  if (/when|time|deadline|ready|delivery|deliver/.test(t)) return `${hi}\n\n${formal ? 'We will share a delivery date as soon as the scope is confirmed.' : 'Once the scope is final we will give you an exact delivery date.'} ${formal ? 'Could you confirm the scope?' : 'Can you confirm what you need?'}`;
+  return `${hi}\n\n${formal ? 'Thank you for your message. Could you share a few more details so we can help you properly?' : 'Thanks for your message! Can you share a bit more detail so I can help you properly?'}`;
+}
+function winQuickReply_(key) {
+  const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
+  const tone = win.querySelector('[data-role="tone"]').value;
+  win.querySelector('[data-role="input"]').value = suggestReply_(s, lastClientMessage_(s), tone);
+  win.querySelector('[data-role="input"]').focus();
+  showCRMToast('Reply drafted. Edit it, then press Send.', 'edit_note');
+}
+function winAiReply_(key, which) {
+  const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
+  const tone = WA_TONES[win.querySelector('[data-role="tone"]').value] || '';
+  const convo = visibleChat_(threadOf_(s)).slice(-6).map(m => (m.direction === 'INCOMING' ? 'Client: ' : 'Us: ') + String(m.text).replace(/\s+/g, ' ').slice(0, 300)).join('\n');
+  const c = waCtx_(s.leadId || '');
+  const prompt = `You are replying on WhatsApp for a video production studio called ${c.agency}.\nTone and audience: ${tone}.\nWrite the best short reply to the client's last message. Keep links, amounts and names exact${c.portfolio ? '. Our portfolio link is ' + c.portfolio : ''}. No emojis. End with one clear next step.\nReturn only the reply text.\n\nConversation:\n${convo}`;
+  (navigator.clipboard ? navigator.clipboard.writeText(prompt).catch(() => {}) : Promise.resolve()).then(() =>
+    showCRMToast(which === 'gemini' ? 'Prompt copied. Press Ctrl+V in Gemini, copy its answer, then press Paste AI reply here.' : 'Claude opened with the conversation. Copy its answer, then press Paste AI reply here.', 'auto_awesome'));
+  openFloating_(which === 'gemini' ? 'https://gemini.google.com/app' : 'https://claude.ai/new?q=' + encodeURIComponent(prompt), 'berich_ai');
+}
+
 async function winSend_(key) {
   const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
   const input = win.querySelector('[data-role="input"]');
@@ -8991,12 +9034,15 @@ async function winSend_(key) {
 function confirmPending_(key, cid) { const s = chatSessions.get(key); if (!s) return; updateThreadMsg_(s, cid, { status: 'sent', via: 'WhatsApp Web (confirmed by you)' }); noteChatEvent_(s, 'sent'); renderWin_(key); }
 function discardPending_(key, cid) { const s = chatSessions.get(key); if (!s) return; removeThreadMsg_(s, cid); renderWin_(key); }
 function winLogReply_(key) {
+  const win = document.getElementById(winId_(key)); if (!win) return;
+  const box = win.querySelector('.chat-logbox'); box.classList.remove('hidden'); box.querySelector('[data-role="logtext"]').focus();
+}
+function winSaveLoggedReply_(key) {
   const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
-  const input = win.querySelector('[data-role="input"]');
-  const text = input.value.trim() || prompt(`Paste the reply from ${s.name}:`);
-  if (!text || !text.trim()) return;
-  pushThread_(s, { direction: 'INCOMING', author: s.name, text: text.trim() });
-  noteChatEvent_(s, 'received'); input.value = ''; renderWin_(key);
+  const ta = win.querySelector('[data-role="logtext"]'); const text = ta.value.trim();
+  if (!text) { showCRMToast('Paste the client message first.', 'warning'); return; }
+  pushThread_(s, { direction: 'INCOMING', author: s.name, text });
+  noteChatEvent_(s, 'received'); ta.value = ''; win.querySelector('.chat-logbox').classList.add('hidden'); renderWin_(key);
   showCRMToast('Reply saved. The waiting timer was reset.', 'check_circle');
 }
 function winEmail_(key) {
