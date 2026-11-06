@@ -8868,7 +8868,7 @@ function openChatWindow(leadId, phone, opts) {
           </div>
         </details>
         <div class="chat-logbox hidden"><textarea class="wa-input chat-input" data-role="logtext" rows="2" placeholder="Paste what the client wrote"></textarea><div class="flex gap-1.5"><button type="button" class="wa-chip wa-chip-on" onclick="winSaveLoggedReply_('${s.key}')">Save reply</button><button type="button" class="wa-chip" onclick="this.closest('.chat-logbox').classList.add('hidden')">Cancel</button></div></div>
-        <textarea class="wa-input chat-input" data-role="input" rows="3" placeholder="Type your message"></textarea>
+        <textarea class="wa-input chat-input" data-role="input" rows="3" placeholder="Type a message. Enter sends, Shift+Enter adds a line."></textarea>
         <div class="flex flex-wrap gap-1.5">
           <button type="button" class="wa-chip wa-chip-on" onclick="winSend_('${s.key}')">Send</button>
           <button type="button" class="wa-chip" onclick="winDraft_('${s.key}')" title="Types this message into the original WhatsApp window. You press Enter there.">Put in WhatsApp</button>
@@ -8880,6 +8880,7 @@ function openChatWindow(leadId, phone, opts) {
       </div>`;
     document.getElementById('crm-chat-layer').appendChild(win);
     makeDraggable_(win);
+    win.querySelector('[data-role="input"]').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); winSend_(s.key); } });
   }
   win.classList.remove('chat-hidden', 'chat-min');
   if (opts && opts.full) win.classList.add('chat-win-full');

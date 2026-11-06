@@ -20,7 +20,9 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
+const { makeResolver } = require('./wa-resolve');
 const PORT = process.env.PORT || 3030;
+const resolver = makeResolver(() => waClient);
 // Privacy: the bridge keeps ONLY messages from numbers the CRM has told it to track (saved clients and chats you opened).
 // Everything else on this phone (family, friends, groups) is dropped the moment it arrives and is never stored or shown.
 const TRACK_FILE = path.join(__dirname, 'tracked-numbers.json');
@@ -51,6 +53,7 @@ const automationState = {
   pairedNumber: '',
   wa: { status: 'NOT_STARTED', number: '', qr: '', error: '' },
   ignoredMessages: 0,
+  ignoredLog: [],
   activePartners: ['koushik', 'bharagav', 'kiran'],
   slaThresholdHours: {
     prompt: 2,
@@ -333,6 +336,7 @@ const server = http.createServer((req, res) => {
         const digits = String(to).replace(/\D/g, '');
         waClient.sendMessage(digits + '@c.us', text).then(sent => {
           const sid = sent && sent.id && sent.id._serialized;
+          if (sent && sent.to) resolver.learn(sent.to, digits);
           if (sid) trackedMsgIds.add(sid);
           automationState.messageLedger.unshift({ direction: 'OUTGOING', to: digits, text, timestamp, id: sid });
           if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
@@ -627,8 +631,9 @@ function startWhatsAppClient() {
   waClient.on('disconnected', r => { automationState.wa = { status: 'DISCONNECTED', number: '', qr: '', error: String(r) }; emitStatus(); restartWhatsApp('WhatsApp disconnected: ' + r); });
   waClient.on('message_create', async msg => {
     if (!msg.fromMe || msg.isStatus || String(msg.to).includes('@g.us')) return;
-    let to = String(msg.to).replace(/@.*/, '');
-    try { const c = await msg.getChat(); const ct = c && (await c.getContact()); if (ct && ct.number) to = String(ct.number).replace(/\D/g, ''); } catch (e) {}
+    let contactNumber = '';
+    try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
+    const to = await resolver.resolveNumber(msg.to, contactNumber);
     if (!isTracked(to)) return;
     const id = msg.id && msg.id._serialized;
     if (id) trackedMsgIds.add(id);
@@ -643,10 +648,16 @@ function startWhatsAppClient() {
   });
   waClient.on('message', async msg => {
     if (msg.fromMe || msg.isStatus || String(msg.from).includes('@g.us')) return; // ignore own, status and group messages
-    // WhatsApp sometimes gives a long internal id (ending @lid) instead of the phone number. Ask for the real number.
-    let from = String(msg.from).replace(/@.*/, '');
-    try { const c = await msg.getContact(); if (c && c.number) from = String(c.number).replace(/\D/g, ''); } catch (e) {}
-    if (!isTracked(from)) { automationState.ignoredMessages += 1; return; } // not a CRM contact: only counted, never read or kept
+    // WhatsApp often gives a long internal id (@lid) instead of the phone number. Resolve the real number first.
+    let contactNumber = '';
+    try { const c = await msg.getContact(); contactNumber = (c && c.number) || ''; } catch (e) {}
+    const from = await resolver.resolveNumber(msg.from, contactNumber);
+    if (!isTracked(from)) {
+      automationState.ignoredMessages += 1; // only counted, never read or kept
+      automationState.ignoredLog.unshift({ endsWith: String(from).slice(-4), at: new Date().toISOString() });
+      if (automationState.ignoredLog.length > 5) automationState.ignoredLog.pop();
+      return;
+    }
     const entry = { direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString() };
     automationState.messageLedger.unshift(entry);
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
