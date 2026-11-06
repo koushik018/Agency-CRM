@@ -226,6 +226,34 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Delete a message of a CRM client chat. Your own message: for everyone. A client's message: from your WhatsApp only.
+  if (url.pathname === '/api/delete-message' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', async () => {
+      const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      try {
+        const payload = JSON.parse(body || '{}');
+        if (!payload.id) return send(400, { error: 'Missing message id' });
+        if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
+        const msg = await waClient.getMessageById(payload.id);
+        if (!msg) return send(404, { error: 'WhatsApp no longer has this message' });
+        let contactNumber = '';
+        try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
+        const other = await resolver.resolveNumber(msg.fromMe ? msg.to : msg.from, contactNumber);
+        if (!isTracked(other)) return send(403, { error: 'Not a CRM client chat' }); // never touch personal chats
+        const everyone = !!payload.everyone && !!msg.fromMe;
+        await msg.delete(everyone);
+        trackedMsgIds.delete(payload.id);
+        automationState.messageLedger = automationState.messageLedger.filter(m => m.id !== payload.id);
+        return send(200, { success: true, deleted: everyone ? 'everyone' : 'me' });
+      } catch (e) {
+        return send(502, { success: false, error: e.message });
+      }
+    });
+    return;
+  }
+
   // Restart the WhatsApp link (a stale QR code, or the WhatsApp window was closed).
   if (url.pathname === '/api/restart' && req.method === 'POST') {
     restartWhatsApp('Restarted from the CRM');
@@ -658,7 +686,7 @@ function startWhatsAppClient() {
       if (automationState.ignoredLog.length > 5) automationState.ignoredLog.pop();
       return;
     }
-    const entry = { direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString() };
+    const entry = { direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString(), id: msg.id && msg.id._serialized };
     automationState.messageLedger.unshift(entry);
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
     emitEvent({ kind: 'in', ...entry });

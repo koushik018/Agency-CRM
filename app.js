@@ -8531,6 +8531,7 @@ function updateThreadMsg_(s, cid, patch) {
   return m || null;
 }
 function removeThreadMsg_(s, cid) {
+  try { const st = readJson_(CHAT_STORE_KEY); if (s.leadId && st[s.leadId]) { st[s.leadId] = st[s.leadId].filter(x => x.cid !== cid); localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(st)); } } catch (e) {}
   if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); if (l && Array.isArray(l.chatHistory)) { l.chatHistory = l.chatHistory.filter(x => x.cid !== cid); saveToLocalCache(); } return; }
   const store = readJson_(NUM_CHAT_KEY); store[s.key] = (store[s.key] || []).filter(x => x.cid !== cid);
   try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {}
@@ -8582,7 +8583,8 @@ function endChat_(key, opts) {
       `${chatUser_()} ended the chat with ${s.name}${s.phone ? ' (' + s.phone + ')' : ''} from ${s.sender}: ${s.sent} sent, ${s.received} received, ${mins} min`, false);
     if (!opts.skipPush) { clearTimeout(chatSyncTimer); try { pushToGitHubDatabase(`${chatUser_()}: chat with ${s.name} ended`); } catch (e) {} }
   }
-  updateChatLauncher_();
+  if (inboxSel === key) { inboxSel = ''; const mn = document.getElementById('inbox-main'); if (mn) mn.innerHTML = '<div class="inbox-empty">Chat ended. Choose another chat on the left.</div>'; }
+  updateChatLauncher_(); try { refreshInboxList_(); } catch (e) {}
   if (!opts.silent) showCRMToast(`Chat with ${s.name} ended and saved.`, 'check_circle');
 }
 function endAllChats() {
@@ -8604,8 +8606,8 @@ function notifyIncoming_(lead, text, phone) {
   noteChatEvent_(s, 'received');
   showCRMToast(`New reply from ${s.name}: ${String(text || '').slice(0, 60)}`, 'chat');
   try { if ('Notification' in window && Notification.permission === 'granted') new Notification(`Reply from ${s.name}`, { body: String(text || '').slice(0, 120) }); } catch (e) {}
-  try { openChatWindow(s.leadId, s.phone, { quiet: true }); } catch (e) {}
-  renderWin_(s.key);
+  if (inboxOpen_()) { if (inboxSel === s.key) { s.unread = 0; renderWin_(s.key); } refreshInboxList_(); }
+  else { try { openChatWindow(s.leadId, s.phone, { quiet: true }); } catch (e) {} renderWin_(s.key); }
 }
 function enableReplyAlerts() {
   if (!('Notification' in window)) { showCRMToast('This browser does not support alerts.', 'warning'); return; }
@@ -8631,6 +8633,7 @@ function trackedNumbers_() {
   const set = new Set();
   (crmState.leads || []).forEach(l => { const d = String(l.contactPhone || l.phone || '').replace(/\D/g, ''); if (d.length >= 7) set.add(d); });
   chatSessions.forEach(s => { if (s.phone) set.add(s.phone); });
+  Object.keys(readJson_(NUM_CHAT_KEY)).forEach(k => { const d = k.replace(/^N:/, ''); if (d.length >= 7) set.add(d); });
   return [...set];
 }
 function senderPort_() { return getActiveSender_().port || 3030; }
@@ -8710,11 +8713,11 @@ function ingestIncoming_(item) {
   if (seenIncoming_.has(id)) return; seenIncoming_.add(id);
   const digits = String(item.from || '').replace(/\D/g, '');
   const lead = (crmState.leads || []).find(l => { const p = String(l.contactPhone || l.phone || '').replace(/\D/g, ''); return p && (p === digits || p.slice(-10) === digits.slice(-10)); });
-  if (!lead && !chatSessions.has('N:' + digits)) return; // not a CRM contact and not a chat you opened: ignore completely
+  if (!lead && !chatSessions.has('N:' + digits) && !readJson_(NUM_CHAT_KEY)['N:' + digits]) return; // not a CRM contact and not a chat you opened: ignore completely
   const s = getSession_(lead || null, digits);
   const hist = threadOf_(s);
-  if (hist.some(m => m.timestamp === item.timestamp || (m.direction === 'INCOMING' && m.text === item.text))) return;
-  pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp });
+  if (hist.some(m => (item.id && m.waId === item.id) || m.timestamp === item.timestamp || (m.direction === 'INCOMING' && m.text === item.text))) return;
+  pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp, waId: item.id });
   notifyIncoming_(lead || null, item.text, digits);
 }
 setInterval(() => { if (!document.hidden) pollBridge_(); }, 15000);
@@ -8756,7 +8759,7 @@ function ensureChatLayer_() {
   const fab = document.createElement('div');
   fab.id = 'crm-chat-fab';
   fab.innerHTML = `
-    <button type="button" class="chat-fab-btn" onclick="toggleChatLauncher()" aria-label="Chats">
+    <button type="button" class="chat-fab-btn" onclick="openInbox()" aria-label="Open the chat inbox">
       <span class="material-symbols-outlined">forum</span><span>Chats</span><span id="chat-fab-count" class="chat-fab-badge hidden">0</span>
     </button>`;
   document.body.appendChild(fab);
@@ -8812,6 +8815,7 @@ function launchChatFromPanel(newTab) {
   openChatWindow(id, phone);
 }
 function updateChatLauncher_() {
+  try { if (inboxOpen_()) refreshInboxList_(); } catch (e) {}
   const n = chatSessions.size;
   const unread = [...chatSessions.values()].reduce((a, s) => a + (s.unread || 0), 0);
   const badge = document.getElementById('chat-fab-count');
@@ -8829,20 +8833,23 @@ function openChatWindow(leadId, phone, opts) {
   const s = getSession_(lead, digits);
   let win = document.getElementById(winId_(s.key));
   if (!win) {
-    if (document.querySelectorAll('.chat-win').length >= MAX_CHAT_WINDOWS) { showCRMToast(`You can have ${MAX_CHAT_WINDOWS} chat windows open. End or close one first.`, 'warning'); return; }
+    if (!(opts && opts.inbox) && document.querySelectorAll('.chat-win:not(.chat-hidden):not(.chat-docked)').length >= MAX_CHAT_WINDOWS) { showCRMToast(`You can have ${MAX_CHAT_WINDOWS} chat windows open. End or close one first.`, 'warning'); return; }
     win = document.createElement('div');
     win.id = winId_(s.key); win.className = 'chat-win'; win.dataset.key = s.key;
-    const idx = document.querySelectorAll('.chat-win').length;
+    const idx = document.querySelectorAll('.chat-win:not(.chat-hidden):not(.chat-docked)').length;
     win.style.right = (24 + idx * 372) + 'px'; win.style.bottom = '84px';
     const tone = loadWaPrefs_().tone || 'friendly';
     win.innerHTML = `
       <div class="chat-win-head" data-drag>
         <div class="chat-win-title"><strong class="chat-win-name"></strong><span class="chat-win-sub"></span></div>
         <div class="chat-win-btns">
+          <button type="button" class="wa-paste only-docked" title="Pop this chat out into its own floating window" onclick="popOutChat_('${s.key}')">Float</button>
+          <button type="button" class="wa-paste only-floating" title="Put this chat back into the Inbox" onclick="dockChat_('${s.key}')">Inbox</button>
           <button type="button" class="wa-paste" title="Open in a new tab" onclick="openChatTab('${s.key}')">New tab</button>
-          <button type="button" class="wa-paste" title="Shrink" onclick="toggleMinChat('${s.key}')">Min</button>
+          <button type="button" class="wa-paste" title="Clear this chat in the CRM" onclick="clearChatCrm_('${s.key}')">Clear</button>
+          <button type="button" class="wa-paste only-floating" title="Shrink" onclick="toggleMinChat('${s.key}')">Min</button>
           <button type="button" class="wa-paste chat-end" onclick="endChat_('${s.key}')">End chat</button>
-          <button type="button" class="wa-paste" title="Hide window, chat stays open" onclick="hideChatWindow('${s.key}')">X</button>
+          <button type="button" class="wa-paste only-floating" title="Hide window, chat stays open" onclick="hideChatWindow('${s.key}')">X</button>
         </div>
       </div>
       <div class="chat-win-body">
@@ -8882,6 +8889,7 @@ function openChatWindow(leadId, phone, opts) {
     makeDraggable_(win);
     win.querySelector('[data-role="input"]').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); winSend_(s.key); } });
   }
+  if (opts && opts.inbox) { renderWin_(s.key); win.classList.add('chat-hidden'); return win; }
   win.classList.remove('chat-hidden', 'chat-min');
   if (opts && opts.full) win.classList.add('chat-win-full');
   s.unread = 0;
@@ -8896,7 +8904,7 @@ function toggleMinChat(key) { document.getElementById(winId_(key))?.classList.to
 function openChatTab(key) { const s = chatSessions.get(key); if (s && s.leadId) window.open(location.pathname + '?chat=' + encodeURIComponent(s.leadId), '_blank', 'noopener'); else showCRMToast('New tab works for saved clients. Save this number as a deal first.', 'info'); }
 function makeDraggable_(win) {
   const head = win.querySelector('[data-drag]'); let sx, sy, ox, oy, drag = false;
-  head.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; drag = true; const r = win.getBoundingClientRect(); sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; head.setPointerCapture(e.pointerId); });
+  head.addEventListener('pointerdown', e => { if (e.target.closest('button') || win.classList.contains('chat-docked')) return; drag = true; const r = win.getBoundingClientRect(); sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; head.setPointerCapture(e.pointerId); });
   head.addEventListener('pointermove', e => { if (!drag) return; win.style.left = Math.max(0, ox + e.clientX - sx) + 'px'; win.style.top = Math.max(0, oy + e.clientY - sy) + 'px'; win.style.right = 'auto'; win.style.bottom = 'auto'; });
   head.addEventListener('pointerup', () => { drag = false; });
 }
@@ -8918,7 +8926,7 @@ function renderWin_(key) {
     else if (mine && m.status === 'sent') st = '<div class="wa-msg-status">\u2713 Sent</div>';
     const isLastIn = !mine && m === lastIn;
     const act = isLastIn ? `<div class="wa-reply-actions"><button type="button" onclick="winQuickReply_('${s.key}')">Quick reply</button><button type="button" onclick="winAiReply_('${s.key}','claude')">Reply with Claude</button><button type="button" onclick="winAiReply_('${s.key}','gemini')">Reply with Gemini</button></div>` : '';
-    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span></div><div>${esc(String(m.text).slice(0, 600))}</div>${st}${act}</div>`;
+    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span><button type="button" class="wa-msg-del" title="Delete this message" onclick="askDeleteMsg_('${s.key}','${m.cid}')">Delete</button></div><div>${esc(String(m.text).slice(0, 600))}</div>${st}${act}</div>`;
   }).join('') : '<span class="wa-help">No messages yet. Your chat history is stored only on this computer.</span>';
   box.scrollTop = box.scrollHeight;
   win.querySelector('.chat-bridge-chip').textContent = bridgeText_();
@@ -9470,6 +9478,202 @@ async function mailPoll_() {
   } catch (e) {}
 }
 setInterval(mailPoll_, 60000);
+
+
+/* ==========================================================================
+   CRM INBOX: one big, resizable chat box (chat list + selected chat), like WhatsApp Web.
+   Any chat can be floated into its own window and docked back.
+   Deleting a message removes the CRM copy and also deletes it in WhatsApp through the bridge.
+   ========================================================================== */
+let inboxSel = '';
+
+function inboxEl_() { return document.getElementById('crm-inbox'); }
+function inboxOpen_() { const el = inboxEl_(); return !!el && !el.classList.contains('hidden'); }
+
+function ensureInbox_() {
+  if (inboxEl_()) return;
+  const el = document.createElement('div');
+  el.id = 'crm-inbox'; el.className = 'hidden';
+  el.innerHTML = `
+    <div class="inbox-head" data-drag>
+      <strong>Inbox</strong>
+      <span class="inbox-sub chat-bridge-chip"></span>
+      <div class="inbox-head-btns">
+        <button type="button" class="wa-paste" onclick="document.getElementById('crm-inbox').classList.toggle('inbox-min')">Min</button>
+        <button type="button" class="wa-paste" onclick="closeInbox()">Close</button>
+      </div>
+    </div>
+    <div class="inbox-body">
+      <div class="inbox-list-pane">
+        <input id="inbox-search" class="wa-input" placeholder="Search clients or numbers" oninput="refreshInboxList_()"/>
+        <div id="inbox-list" class="inbox-list"></div>
+        <details class="chat-more">
+          <summary>New chat and options</summary>
+          <div class="chat-more-body">
+            <select id="inbox-new-client" class="wa-input"></select>
+            <input id="inbox-new-phone" class="wa-input" placeholder="Or a number with country code"/>
+            <button type="button" class="wa-chip wa-chip-on" onclick="inboxNewChat_()">Open chat</button>
+            <label class="wa-help" for="chat-send-mode-inbox">Send with</label>
+            <select id="chat-send-mode-inbox" class="wa-input" onchange="setSendMode(this.value)">
+              <option value="bridge">Automatic (bridge sends by itself)</option>
+              <option value="window">Original WhatsApp window (CRM types it, I press Enter)</option>
+              <option value="official">Official WhatsApp Web (I press send)</option>
+            </select>
+            <div class="flex flex-wrap gap-1.5">
+              <button type="button" class="wa-chip" onclick="openLinkWhatsApp()">Link WhatsApp</button>
+              <button type="button" class="wa-chip" onclick="openGmailInbox()">Open Gmail</button>
+              <button type="button" class="wa-chip" onclick="enableReplyAlerts()">Turn on alerts</button>
+              <button type="button" class="wa-chip" onclick="exportMyChats()">Back up my chats</button>
+              <button type="button" class="wa-chip wa-chip-accent" onclick="endAllChats()">End all chats</button>
+            </div>
+            <p class="wa-help wa-sender-help"></p>
+          </div>
+        </details>
+      </div>
+      <section id="inbox-main" class="inbox-main"><div class="inbox-empty">Choose a chat on the left to start.</div></section>
+    </div>`;
+  document.body.appendChild(el);
+  makeDraggable_(el);
+}
+
+function openInbox(key) {
+  ensureChatLayer_(); ensureInbox_();
+  const el = inboxEl_(); el.classList.remove('hidden', 'inbox-min');
+  document.getElementById('crm-chat-launcher')?.classList.add('hidden');
+  const sel = document.getElementById('inbox-new-client');
+  if (sel) sel.innerHTML = '<option value="">Choose a client</option>' + (globalState.leads || []).map(l => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.clientName)}</option>`).join('');
+  const sm = document.getElementById('chat-send-mode-inbox'); if (sm) sm.value = effectiveSendMode_();
+  renderSenderControls_();
+  refreshInboxList_();
+  pollBridge_();
+  if (key) selectInboxChat_(key); else if (inboxSel && chatSessions.has(inboxSel)) selectInboxChat_(inboxSel);
+}
+function closeInbox() {
+  const win = inboxSel && document.getElementById(winId_(inboxSel));
+  if (win) { win.classList.remove('chat-docked'); win.classList.add('chat-hidden'); document.getElementById('crm-chat-layer')?.appendChild(win); }
+  inboxEl_()?.classList.add('hidden');
+}
+
+function inboxEntries_() {
+  const map = new Map();
+  (crmState.leads || []).forEach(l => map.set('L:' + l.id, { key: 'L:' + l.id, name: l.clientName, phone: String(l.contactPhone || l.phone || '').replace(/\D/g, ''), history: l.chatHistory }));
+  chatSessions.forEach(s => { if (!map.has(s.key)) map.set(s.key, { key: s.key, name: s.name, phone: s.phone, history: s.leadId ? [] : null }); });
+  const nums = readJson_(NUM_CHAT_KEY);
+  Object.keys(nums).forEach(k => { if (!map.has(k)) map.set(k, { key: k, name: '+' + k.slice(2), phone: k.slice(2), history: nums[k] }); });
+  const out = [];
+  map.forEach(e => {
+    const hist = visibleChat_(e.history !== null && e.history !== undefined ? e.history : (nums[e.key] || []));
+    const last = hist[hist.length - 1];
+    e.last = last || null;
+    e.lastTs = last ? new Date(last.timestamp || 0).getTime() : 0;
+    e.unread = (chatSessions.get(e.key) || {}).unread || 0;
+    out.push(e);
+  });
+  out.sort((a, b) => (b.lastTs - a.lastTs) || String(a.name).localeCompare(String(b.name)));
+  return out;
+}
+function refreshInboxList_() {
+  const box = document.getElementById('inbox-list'); if (!box) return;
+  const q = (document.getElementById('inbox-search')?.value || '').trim().toLowerCase();
+  const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rows = inboxEntries_().filter(e => !q || String(e.name).toLowerCase().includes(q) || String(e.phone).includes(q.replace(/\D/g, '') || '\u0000'));
+  box.innerHTML = rows.map(e => {
+    const prev = e.last ? (e.last.direction === 'OUTGOING' ? 'You: ' : '') + String(e.last.text || '').replace(/\s+/g, ' ').slice(0, 60) : (e.phone ? '+' + e.phone : 'No number yet');
+    const when = e.lastTs ? new Date(e.lastTs).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const initial = esc(String(e.name || '?').replace(/^\+/, '#').trim().charAt(0).toUpperCase());
+    return `<button type="button" class="inbox-row${e.key === inboxSel ? ' inbox-row-on' : ''}" onclick="selectInboxChat_('${e.key.replace(/'/g, "\\'")}')">
+      <span class="inbox-avatar">${initial}</span>
+      <span class="inbox-row-main"><span class="inbox-row-top"><b>${esc(e.name)}</b><i>${esc(when)}</i></span><span class="inbox-row-prev">${esc(prev)}</span></span>
+      ${e.unread ? `<span class="inbox-unread">${e.unread}</span>` : ''}
+    </button>`;
+  }).join('') || '<p class="wa-help" style="padding:8px">No chats match.</p>';
+}
+function selectInboxChat_(key) {
+  ensureInbox_();
+  if (!inboxOpen_()) inboxEl_().classList.remove('hidden');
+  let win = document.getElementById(winId_(key));
+  if (!win) {
+    if (key.startsWith('L:')) openChatWindow(key.slice(2), '', { quiet: true, inbox: true });
+    else openChatWindow('', key.slice(2), { quiet: true, inbox: true });
+    win = document.getElementById(winId_(key));
+  }
+  if (!win) return;
+  const main = document.getElementById('inbox-main');
+  const prev = inboxSel && inboxSel !== key ? document.getElementById(winId_(inboxSel)) : null;
+  if (prev) { prev.classList.remove('chat-docked'); prev.classList.add('chat-hidden'); document.getElementById('crm-chat-layer').appendChild(prev); }
+  main.innerHTML = '';
+  main.appendChild(win);
+  win.classList.add('chat-docked'); win.classList.remove('chat-hidden', 'chat-min', 'chat-win-full');
+  win.style.left = win.style.top = win.style.right = win.style.bottom = '';
+  inboxSel = key;
+  const s = chatSessions.get(key); if (s) s.unread = 0;
+  renderWin_(key); refreshInboxList_(); updateChatLauncher_();
+}
+function inboxNewChat_() {
+  const id = document.getElementById('inbox-new-client').value;
+  const digits = String(document.getElementById('inbox-new-phone').value || '').replace(/\D/g, '');
+  if (id) selectInboxChat_('L:' + id);
+  else if (digits.length >= 7) selectInboxChat_('N:' + digits);
+  else showCRMToast('Choose a client or type a number.', 'warning');
+}
+function popOutChat_(key) {
+  const win = document.getElementById(winId_(key)); if (!win) return;
+  win.classList.remove('chat-docked', 'chat-hidden', 'chat-min');
+  const idx = document.querySelectorAll('.chat-win:not(.chat-docked):not(.chat-hidden)').length;
+  win.style.right = (24 + idx * 372) + 'px'; win.style.bottom = '84px';
+  document.getElementById('crm-chat-layer').appendChild(win);
+  if (inboxSel === key) { inboxSel = ''; const main = document.getElementById('inbox-main'); if (main) main.innerHTML = '<div class="inbox-empty">Chat floated. Choose another chat on the left.</div>'; }
+  refreshInboxList_();
+}
+function dockChat_(key) { openInbox(key); }
+
+/* ---------- delete a message: CRM copy and WhatsApp ---------- */
+function askDeleteMsg_(key, cid) {
+  const s = chatSessions.get(key); if (!s) return;
+  const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
+  const mine = m.direction === 'OUTGOING';
+  let modal = document.getElementById('crm-del-modal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'crm-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
+  const canWa = !!m.waId && chatBridge.ready;
+  const what = canWa
+    ? (mine ? 'It will be removed from the CRM and deleted for everyone in WhatsApp. The client will see "This message was deleted". This cannot be undone.' : 'It will be removed from the CRM and from your WhatsApp. The client still keeps their own copy. This cannot be undone.')
+    : 'It will be removed from the CRM only. ' + (m.waId ? 'WhatsApp is not linked right now, so it stays in WhatsApp.' : 'This message was not sent through the linked bridge, so there is nothing to delete in WhatsApp.');
+  modal.innerHTML = `
+    <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-del-modal')"></div>
+    <div class="relative w-full max-w-md neo-modal p-6 z-10 flex flex-col gap-3">
+      <h3 class="text-lg font-bold">Delete this message?</h3>
+      <div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}" style="align-self:stretch;max-width:none">${mailEsc_(String(m.text).slice(0, 300))}</div>
+      <p class="wa-help">${what}</p>
+      <div class="flex gap-2 justify-end"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Cancel</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}')">Delete</button></div>
+    </div>`;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+async function deleteMessage_(key, cid) {
+  closeModal('crm-del-modal');
+  const s = chatSessions.get(key); if (!s) return;
+  const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
+  let waNote = 'Removed from the CRM only.';
+  if (m.waId && chatBridge.ready) {
+    try {
+      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, everyone: m.direction === 'OUTGOING' }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.success) waNote = j.deleted === 'everyone' ? 'Deleted in the CRM and for everyone in WhatsApp.' : 'Deleted in the CRM and from your WhatsApp.';
+      else waNote = 'Removed from the CRM. WhatsApp did not delete it (' + (j.error || 'too old or not allowed') + ').';
+    } catch (e) { waNote = 'Removed from the CRM. Could not reach the bridge, so WhatsApp still has it.'; }
+  }
+  removeThreadMsg_(s, cid);
+  renderWin_(key); refreshInboxList_();
+  showCRMToast(waNote, 'delete');
+}
+function clearChatCrm_(key) {
+  const s = chatSessions.get(key); if (!s) return;
+  if (!confirm('Clear all messages of this chat from the CRM on this computer? WhatsApp is not touched.')) return;
+  if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); if (l) { l.chatHistory = []; saveToLocalCache(); } }
+  else { const st = readJson_(NUM_CHAT_KEY); delete st[s.key]; try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(st)); } catch (e) {} }
+  try { const st2 = readJson_(CHAT_STORE_KEY); if (s.leadId) delete st2[s.leadId]; localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(st2)); } catch (e) {}
+  renderWin_(key); refreshInboxList_();
+  showCRMToast('Chat cleared in the CRM.', 'delete');
+}
 
 /* ---------- keep chats out of GitHub, and keep them after a pull ---------- */
 const __origBuildPayload_ = buildGitHubDatabasePayload_;
