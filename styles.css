@@ -2118,3 +2118,8 @@ details.wa-collapsible[open] > summary { margin-bottom: 8px; }
 #crm-chat-fab, #crm-chat-launcher { z-index: 52 !important; }
 .inbox-list-pane .wa-input { flex: none; width: 100%; }
 .inbox-row-on .inbox-row-prev, .inbox-row-on .inbox-row-top i { color: var(--uv-ink-2); }
+
+/* v72: pictures and files in chats */
+.wa-media { display: block; max-width: 100%; max-height: 260px; border-radius: 12px; margin: 4px 0; object-fit: contain; background: var(--uv-panel-2); }
+.wa-file { display: inline-block; padding: 6px 12px; margin: 4px 0; border-radius: 9999px; border: 1.5px solid var(--uv-accent); color: var(--uv-accent-text); font-weight: 700; font-size: 14px; text-decoration: none; }
+.wa-msg-out .wa-file { color: #3B1E8F; border-color: #3B1E8F; }

@@ -26,9 +26,10 @@ const resolver = makeResolver(() => waClient);
 // Privacy: the bridge keeps ONLY messages from numbers the CRM has told it to track (saved clients and chats you opened).
 // Everything else on this phone (family, friends, groups) is dropped the moment it arrives and is never stored or shown.
 const TRACK_FILE = path.join(__dirname, 'tracked-numbers.json');
-let trackedNumbers = new Set();
-try { trackedNumbers = new Set(JSON.parse(fs.readFileSync(TRACK_FILE, 'utf-8'))); } catch (e) {}
-function saveTracked() { try { fs.writeFileSync(TRACK_FILE, JSON.stringify([...trackedNumbers]), 'utf-8'); } catch (e) {} }
+let trackedNumbers = new Set(); // last 10 digits, for matching
+let trackedFull = new Set();    // full numbers with country code, for finding the chat
+let lastSeen = {};              // full number -> unix seconds of the newest client message already handled
+function saveTracked() { try { fs.writeFileSync(TRACK_FILE, JSON.stringify({ numbers: [...trackedFull], lastSeen }), 'utf-8'); } catch (e) {} }
 const sseClients = new Set();
 const trackedMsgIds = new Set();
 function emitEvent(ev) {
@@ -38,6 +39,39 @@ function emitEvent(ev) {
 function emitStatus() { emitEvent({ kind: 'status', status: automationState.wa.status, number: automationState.wa.number }); }
 const last10 = n => String(n || '').replace(/\D/g, '').slice(-10);
 const isTracked = n => last10(n).length >= 7 && trackedNumbers.has(last10(n));
+function fullFor(n) { const k = last10(n); for (const f of trackedFull) if (last10(f) === k) return f; return String(n).replace(/\D/g, ''); }
+function loadTracked() {
+  try {
+    const j = JSON.parse(fs.readFileSync(TRACK_FILE, 'utf-8'));
+    const arr = Array.isArray(j) ? j : (j.numbers || []);
+    lastSeen = Array.isArray(j) ? {} : (j.lastSeen || {});
+    trackedFull = new Set(arr); trackedNumbers = new Set(arr.map(last10));
+  } catch (e) {}
+}
+loadTracked();
+const MEDIA_DIR = path.join(__dirname, 'media');
+const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'application/pdf': 'pdf' };
+const EXT_MIME = Object.fromEntries(Object.entries(MIME_EXT).map(([m, e]) => [e, m]));
+const MAX_MEDIA_BYTES = 12 * 1024 * 1024;
+const seenMsgIds = new Set();
+function saveMediaFile(mimetype, base64, hintName) {
+  const bytes = Buffer.from(base64, 'base64');
+  if (bytes.length > MAX_MEDIA_BYTES) return { type: mimetype, name: hintName || 'file', tooBig: true, size: bytes.length };
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
+  const ext = MIME_EXT[String(mimetype).split(';')[0]] || (String(hintName || '').split('.').pop().replace(/[^A-Za-z0-9]/g, '').slice(0, 5) || 'bin');
+  const file = Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + '.' + ext;
+  fs.writeFileSync(path.join(MEDIA_DIR, file), bytes);
+  try { const all = fs.readdirSync(MEDIA_DIR).map(n => ({ n, t: fs.statSync(path.join(MEDIA_DIR, n)).mtimeMs })).sort((x, y) => y.t - x.t); all.slice(300).forEach(o => fs.unlinkSync(path.join(MEDIA_DIR, o.n))); } catch (e) {}
+  return { type: String(mimetype).split(';')[0], name: hintName || file, url: '/api/media/' + file, size: bytes.length };
+}
+async function saveMediaIfAny(msg) {
+  try {
+    if (!msg.hasMedia) return null;
+    const m = await msg.downloadMedia();
+    if (!m || !m.data) return null;
+    return saveMediaFile(m.mimetype, m.data, m.filename);
+  } catch (e) { return null; }
+}
 const ALLOWED_ORIGINS = [
   /^https:\/\/koushik018\.github\.io$/,
   /^http:\/\/localhost(:\d+)?$/,
@@ -201,8 +235,11 @@ const server = http.createServer((req, res) => {
     req.on('data', c => { body += c; });
     req.on('end', () => {
       try {
-        const nums = (JSON.parse(body || '{}').numbers || []).map(last10).filter(x => x.length >= 7);
-        trackedNumbers = new Set(nums);
+        const raw = (JSON.parse(body || '{}').numbers || []).map(n => String(n).replace(/\D/g, '')).filter(x => x.length >= 7);
+        trackedFull = new Set(raw);
+        trackedNumbers = new Set(raw.map(last10));
+        const nowSec = Math.floor(Date.now() / 1000);
+        raw.forEach(n => { if (!lastSeen[n]) lastSeen[n] = nowSec; }); // a newly tracked number starts from now, no old history
         saveTracked();
         automationState.messageLedger = automationState.messageLedger.filter(m => m.direction !== 'INCOMING' || isTracked(m.from));
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -226,6 +263,49 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Pictures and files shared in CRM client chats.
+  if (url.pathname.startsWith('/api/media/') && req.method === 'GET') {
+    const file = path.basename(url.pathname.slice('/api/media/'.length));
+    if (!/^[A-Za-z0-9_.-]+$/.test(file)) { res.writeHead(400); res.end(); return; }
+    const full = path.join(MEDIA_DIR, file);
+    if (!fs.existsSync(full)) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Not found' })); return; }
+    const ext = file.split('.').pop().toLowerCase();
+    const mime = EXT_MIME[ext] || 'application/octet-stream';
+    const inline = /^(image|video|audio)\//.test(mime) || mime === 'application/pdf';
+    res.writeHead(200, { 'Content-Type': mime, 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': (inline ? 'inline' : 'attachment') + '; filename="' + file + '"', 'Cache-Control': 'private, max-age=86400' });
+    fs.createReadStream(full).pipe(res);
+    return;
+  }
+
+  // Send a picture or file to a client.
+  if (url.pathname === '/api/send-media' && req.method === 'POST') {
+    let body = ''; let tooBig = false;
+    req.on('data', c => { body += c; if (body.length > MAX_MEDIA_BYTES * 1.5) { tooBig = true; req.destroy(); } });
+    req.on('end', async () => {
+      const send = (code, obj) => { try { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); } catch (e) {} };
+      try {
+        if (tooBig) return send(413, { error: 'File too large (12 MB maximum)' });
+        const p = JSON.parse(body || '{}');
+        const digits = String(p.to || '').replace(/\D/g, '');
+        if (!digits || !p.data || !p.mimetype) return send(400, { error: 'Missing "to", "data" or "mimetype"' });
+        if (!waClient || automationState.wa.status !== 'READY') return send(503, { status: 'NOT_LINKED', error: 'WhatsApp is not linked' });
+        const { MessageMedia } = require('whatsapp-web.js');
+        const media = new MessageMedia(p.mimetype, p.data, p.filename || undefined);
+        const sent = await waClient.sendMessage(digits + '@c.us', media, p.caption ? { caption: String(p.caption) } : {});
+        const sid = sent && sent.id && sent.id._serialized;
+        if (sent && sent.to) resolver.learn(sent.to, digits);
+        if (sid) { trackedMsgIds.add(sid); seenMsgIds.add(sid); }
+        const saved = saveMediaFile(p.mimetype, p.data, p.filename);
+        automationState.messageLedger.unshift({ direction: 'OUTGOING', to: digits, text: p.caption || '', timestamp: new Date().toISOString(), id: sid, media: saved });
+        if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
+        return send(200, { success: true, status: 'SENT', id: sid, media: saved });
+      } catch (e) {
+        return send(502, { success: false, status: 'FAILED', error: e.message });
+      }
+    });
+    return;
+  }
+
   // Delete a message of a CRM client chat. Your own message: for everyone. A client's message: from your WhatsApp only.
   if (url.pathname === '/api/delete-message' && req.method === 'POST') {
     let body = '';
@@ -236,17 +316,37 @@ const server = http.createServer((req, res) => {
         const payload = JSON.parse(body || '{}');
         if (!payload.id) return send(400, { error: 'Missing message id' });
         if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
-        const msg = await waClient.getMessageById(payload.id);
-        if (!msg) return send(404, { error: 'WhatsApp no longer has this message' });
+        let msg = await waClient.getMessageById(payload.id).catch(() => null);
+        if (!msg) return send(404, { error: 'WhatsApp no longer has this message in its list' });
         let contactNumber = '';
         try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
         const other = await resolver.resolveNumber(msg.fromMe ? msg.to : msg.from, contactNumber);
         if (!isTracked(other)) return send(403, { error: 'Not a CRM client chat' }); // never touch personal chats
-        const everyone = !!payload.everyone && !!msg.fromMe;
-        await msg.delete(everyone);
+        const wantEveryone = !!payload.everyone && !!msg.fromMe;
+        // WhatsApp silently falls back to "delete for me" when it will not revoke. Ask first, then verify, so the CRM never claims more than happened.
+        const info = await waClient.pupPage.evaluate(async id => {
+          const M = window.require('WAWebCollections').Msg;
+          const m = M.get(id) || ((await M.getMessagesById([id])) || {}).messages?.[0];
+          if (!m) return null;
+          let can = false;
+          try { can = !!window.require('WAWebMsgActionCapability').canSenderRevokeMsg(m); } catch (e) {}
+          return { can, ack: m.ack, ageHours: Math.round(((Date.now() / 1000) - (m.t || 0)) / 3600 * 10) / 10, type: m.type };
+        }, payload.id).catch(() => null);
+        if (wantEveryone && info && !info.can) {
+          if (!payload.allowMeOnly) return send(409, { success: false, canRevoke: false, error: 'WhatsApp will not delete this one for the client (' + (info.ageHours > 48 ? 'it is older than 2 days' : 'WhatsApp says it can no longer be revoked') + ')', info });
+          await msg.delete(false);
+          return send(200, { success: true, deleted: 'me', note: 'WhatsApp would not delete it for the client', info });
+        }
+        await msg.delete(wantEveryone);
+        await new Promise(r => setTimeout(r, 900));
+        const after = await waClient.pupPage.evaluate(id => { const m = window.require('WAWebCollections').Msg.get(id); return m ? m.type : 'gone'; }, payload.id).catch(() => 'unknown');
         trackedMsgIds.delete(payload.id);
         automationState.messageLedger = automationState.messageLedger.filter(m => m.id !== payload.id);
-        return send(200, { success: true, deleted: everyone ? 'everyone' : 'me' });
+        if (wantEveryone) {
+          if (after === 'revoked') return send(200, { success: true, deleted: 'everyone', verified: true, info });
+          return send(200, { success: true, deleted: 'me', note: 'WhatsApp did not confirm deleting it for the client', verified: false, info });
+        }
+        return send(200, { success: true, deleted: 'me', info });
       } catch (e) {
         return send(502, { success: false, error: e.message });
       }
@@ -602,6 +702,49 @@ const server = http.createServer((req, res) => {
 // so chats never pass through anyone else's machine. Use a spare number: WhatsApp can
 // ban numbers that automate.
 // ---------------------------------------------------------------------------
+
+// One place that decides whether a client message is kept. Used for live messages and for catching up after a restart.
+async function handleIncoming(msg, from) {
+  if (!isTracked(from)) {
+    automationState.ignoredMessages += 1; // only counted, never read or kept
+    automationState.ignoredLog.unshift({ endsWith: String(from).slice(-4), at: new Date().toISOString() });
+    if (automationState.ignoredLog.length > 5) automationState.ignoredLog.pop();
+    return;
+  }
+  const id = msg.id && msg.id._serialized;
+  if (id) { if (seenMsgIds.has(id)) return; seenMsgIds.add(id); }
+  const media = await saveMediaIfAny(msg);
+  const tsSec = msg.timestamp || Math.floor(Date.now() / 1000);
+  const entry = { direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date(tsSec * 1000).toISOString(), id, media };
+  automationState.messageLedger.unshift(entry);
+  if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
+  const full = fullFor(from);
+  if (!lastSeen[full] || tsSec > lastSeen[full]) { lastSeen[full] = tsSec; saveTracked(); }
+  emitEvent({ kind: 'in', ...entry });
+}
+
+// Catch up on client messages that arrived while the bridge or the WhatsApp window was down.
+let backfilling = false;
+async function backfillTracked(reason) {
+  if (backfilling || !waClient || automationState.wa.status !== 'READY') return;
+  backfilling = true;
+  try {
+    for (const full of [...trackedFull].slice(0, 30)) {
+      try {
+        const wid = await waClient.getNumberId(full);
+        if (!wid) continue;
+        const chat = await waClient.getChatById(wid._serialized);
+        const msgs = await chat.fetchMessages({ limit: 20 });
+        const since = lastSeen[full] || Math.floor(Date.now() / 1000);
+        const fresh = msgs.filter(m => !m.fromMe && !m.isStatus && m.timestamp > since).sort((x, y) => x.timestamp - y.timestamp);
+        for (const m of fresh) await handleIncoming(m, full);
+      } catch (e) { /* this number could not be checked; try again next round */ }
+    }
+  } finally { backfilling = false; }
+}
+setInterval(() => backfillTracked('timer'), 30000);
+
+
 let waClient = null;
 let waRetries = 0;
 let restarting = false;
@@ -665,7 +808,9 @@ function startWhatsAppClient() {
     if (!isTracked(to)) return;
     const id = msg.id && msg.id._serialized;
     if (id) trackedMsgIds.add(id);
-    const entry = { direction: 'OUTGOING', to, text: msg.body || '', timestamp: new Date().toISOString(), id };
+    if (id && seenMsgIds.has(id)) { return; }
+    const media = await saveMediaIfAny(msg);
+    const entry = { direction: 'OUTGOING', to, text: msg.body || '', timestamp: new Date().toISOString(), id, media };
     automationState.messageLedger.unshift(entry);
     if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
     emitEvent({ kind: 'out', ...entry });
@@ -680,17 +825,9 @@ function startWhatsAppClient() {
     let contactNumber = '';
     try { const c = await msg.getContact(); contactNumber = (c && c.number) || ''; } catch (e) {}
     const from = await resolver.resolveNumber(msg.from, contactNumber);
-    if (!isTracked(from)) {
-      automationState.ignoredMessages += 1; // only counted, never read or kept
-      automationState.ignoredLog.unshift({ endsWith: String(from).slice(-4), at: new Date().toISOString() });
-      if (automationState.ignoredLog.length > 5) automationState.ignoredLog.pop();
-      return;
-    }
-    const entry = { direction: 'INCOMING', from, text: msg.body || '', timestamp: new Date().toISOString(), id: msg.id && msg.id._serialized };
-    automationState.messageLedger.unshift(entry);
-    if (automationState.messageLedger.length > 50) automationState.messageLedger.pop();
-    emitEvent({ kind: 'in', ...entry });
+    await handleIncoming(msg, from);
   });
+  waClient.on('ready', () => { setTimeout(() => backfillTracked('ready'), 3000); });
   waClient.initialize().catch(e => {
     automationState.wa = { status: 'ERROR', number: '', qr: '', error: e.message };
     // Common on first start: the browser page reloads while WhatsApp loads. Wait and try again, up to 3 times.

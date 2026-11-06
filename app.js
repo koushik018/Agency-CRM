@@ -8690,6 +8690,7 @@ function handleBridgeEvent_(ev) {
   }
 }
 const seenIncoming_ = new Set();
+function mediaOf_(item) { const m = item && item.media; if (!m) return undefined; return { type: m.type, name: m.name, tooBig: !!m.tooBig, url: m.url ? `http://localhost:${senderPort_()}${m.url}` : '' }; }
 
 function ingestOutgoingSeen_(item) {
   const id = 'out|' + item.timestamp + '|' + String(item.text).slice(0, 30) + '|' + item.to;
@@ -8704,7 +8705,7 @@ function ingestOutgoingSeen_(item) {
   const known = threadOf_(s).find(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && !m.waId && item.id);
   if (known) { updateThreadMsg_(s, known.cid, { waId: item.id }); return; }
   if (threadOf_(s).some(m => m.direction === 'OUTGOING' && waSafeText(m.text) === text && Math.abs(new Date(m.timestamp) - new Date(item.timestamp)) < 120000)) return;
-  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp window', text: item.text, timestamp: item.timestamp, status: 'sent', waId: item.id });
+  pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp window', text: item.text, timestamp: item.timestamp, status: 'sent', waId: item.id, media: mediaOf_(item) });
   noteChatEvent_(s, 'sent');
   renderWin_(s.key);
 }
@@ -8717,7 +8718,7 @@ function ingestIncoming_(item) {
   const s = getSession_(lead || null, digits);
   const hist = threadOf_(s);
   if (hist.some(m => (item.id && m.waId === item.id) || m.timestamp === item.timestamp || (m.direction === 'INCOMING' && m.text === item.text))) return;
-  pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp, waId: item.id });
+  pushThread_(s, { direction: 'INCOMING', author: s.name, text: item.text, timestamp: item.timestamp, waId: item.id, media: mediaOf_(item) });
   notifyIncoming_(lead || null, item.text, digits);
 }
 setInterval(() => { if (!document.hidden) pollBridge_(); }, 15000);
@@ -8878,6 +8879,8 @@ function openChatWindow(leadId, phone, opts) {
         <textarea class="wa-input chat-input" data-role="input" rows="3" placeholder="Type a message. Enter sends, Shift+Enter adds a line."></textarea>
         <div class="flex flex-wrap gap-1.5">
           <button type="button" class="wa-chip wa-chip-on" onclick="winSend_('${s.key}')">Send</button>
+          <button type="button" class="wa-chip" onclick="this.parentElement.querySelector('[data-role=file]').click()" title="Send a picture or file">Attach</button>
+          <input type="file" data-role="file" class="hidden" onchange="winSendFileObj_('${s.key}', this.files[0]); this.value=''">
           <button type="button" class="wa-chip" onclick="winDraft_('${s.key}')" title="Types this message into the original WhatsApp window. You press Enter there.">Put in WhatsApp</button>
           <button type="button" class="wa-chip" onclick="winLogReply_('${s.key}')">Log client reply</button>
           <button type="button" class="wa-chip" onclick="winEmail_('${s.key}')">Email</button>
@@ -8887,6 +8890,7 @@ function openChatWindow(leadId, phone, opts) {
       </div>`;
     document.getElementById('crm-chat-layer').appendChild(win);
     makeDraggable_(win);
+    win.querySelector('[data-role="input"]').addEventListener('paste', e => { const f = [...((e.clipboardData && e.clipboardData.files) || [])].find(x => /^image\//.test(x.type)); if (f) { e.preventDefault(); winSendFileObj_(s.key, f); } });
     win.querySelector('[data-role="input"]').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); winSend_(s.key); } });
   }
   if (opts && opts.inbox) { renderWin_(s.key); win.classList.add('chat-hidden'); return win; }
@@ -8904,9 +8908,27 @@ function toggleMinChat(key) { document.getElementById(winId_(key))?.classList.to
 function openChatTab(key) { const s = chatSessions.get(key); if (s && s.leadId) window.open(location.pathname + '?chat=' + encodeURIComponent(s.leadId), '_blank', 'noopener'); else showCRMToast('New tab works for saved clients. Save this number as a deal first.', 'info'); }
 function makeDraggable_(win) {
   const head = win.querySelector('[data-drag]'); let sx, sy, ox, oy, drag = false;
-  head.addEventListener('pointerdown', e => { if (e.target.closest('button') || win.classList.contains('chat-docked')) return; drag = true; const r = win.getBoundingClientRect(); sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; head.setPointerCapture(e.pointerId); });
-  head.addEventListener('pointermove', e => { if (!drag) return; win.style.left = Math.max(0, ox + e.clientX - sx) + 'px'; win.style.top = Math.max(0, oy + e.clientY - sy) + 'px'; win.style.right = 'auto'; win.style.bottom = 'auto'; });
+  head.addEventListener('pointerdown', e => {
+    if (e.target.closest('button') || win.classList.contains('chat-docked')) return;
+    const r = win.getBoundingClientRect();
+    // A window centred with a CSS transform must become plain coordinates first, or every drag jumps.
+    win.style.transform = 'none'; win.style.left = r.left + 'px'; win.style.top = r.top + 'px'; win.style.right = 'auto'; win.style.bottom = 'auto'; win.style.margin = '0';
+    drag = true; sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; head.setPointerCapture(e.pointerId);
+  });
+  head.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const w = win.offsetWidth, h = win.offsetHeight;
+    // keep at least 120px of the title bar on screen so the window can always be dragged back
+    const left = Math.min(Math.max(ox + e.clientX - sx, 120 - w), window.innerWidth - 120);
+    const top = Math.min(Math.max(oy + e.clientY - sy, 0), window.innerHeight - 56);
+    win.style.left = left + 'px'; win.style.top = top + 'px';
+  });
   head.addEventListener('pointerup', () => { drag = false; });
+  head.addEventListener('dblclick', e => { if (e.target.closest('button')) return; resetWinPos_(win); });
+}
+function resetWinPos_(win) {
+  if (win.id === 'crm-inbox') { win.style.cssText = ''; return; }          // back to the centred default
+  win.style.transform = ''; win.style.left = win.style.top = ''; win.style.margin = ''; win.style.right = '24px'; win.style.bottom = '84px';
 }
 function renderWin_(key) {
   const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win) return;
@@ -8924,9 +8946,18 @@ function renderWin_(key) {
     else if (mine && m.status === 'read') st = '<div class="wa-msg-status wa-read">\u2713\u2713 Read</div>';
     else if (mine && m.status === 'delivered') st = '<div class="wa-msg-status">\u2713\u2713 Delivered</div>';
     else if (mine && m.status === 'sent') st = '<div class="wa-msg-status">\u2713 Sent</div>';
+    let mediaHtml = '';
+    if (m.media) {
+      const u = esc(m.media.url || '').replace(/"/g, '&quot;'), nm = esc(m.media.name || 'file');
+      if (m.media.tooBig || !m.media.url) mediaHtml = `<div class="wa-help">${nm} is too large to keep here. Open it in WhatsApp.</div>`;
+      else if (/^image\//.test(m.media.type)) mediaHtml = `<a href="${u}" target="_blank" rel="noopener"><img class="wa-media" src="${u}" alt="${nm}"/></a>`;
+      else if (/^video\//.test(m.media.type)) mediaHtml = `<video class="wa-media" controls src="${u}"></video>`;
+      else if (/^audio\//.test(m.media.type)) mediaHtml = `<audio controls src="${u}" style="width:100%"></audio>`;
+      else mediaHtml = `<a class="wa-file" href="${u}" target="_blank" rel="noopener">Download: ${nm}</a>`;
+    }
     const isLastIn = !mine && m === lastIn;
     const act = isLastIn ? `<div class="wa-reply-actions"><button type="button" onclick="winQuickReply_('${s.key}')">Quick reply</button><button type="button" onclick="winAiReply_('${s.key}','claude')">Reply with Claude</button><button type="button" onclick="winAiReply_('${s.key}','gemini')">Reply with Gemini</button></div>` : '';
-    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span><button type="button" class="wa-msg-del" title="Delete this message" onclick="askDeleteMsg_('${s.key}','${m.cid}')">Delete</button></div><div>${esc(String(m.text).slice(0, 600))}</div>${st}${act}</div>`;
+    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span><button type="button" class="wa-msg-del" title="Delete this message" onclick="askDeleteMsg_('${s.key}','${m.cid}')">Delete</button></div>${mediaHtml}${m.text ? `<div>${esc(String(m.text).slice(0, 600))}</div>` : ''}${st}${act}</div>`;
   }).join('') : '<span class="wa-help">No messages yet. Your chat history is stored only on this computer.</span>';
   box.scrollTop = box.scrollHeight;
   win.querySelector('.chat-bridge-chip').textContent = bridgeText_();
@@ -9009,6 +9040,25 @@ function winAiReply_(key, which) {
   (navigator.clipboard ? navigator.clipboard.writeText(prompt).catch(() => {}) : Promise.resolve()).then(() =>
     showCRMToast(which === 'gemini' ? 'Prompt copied. Press Ctrl+V in Gemini, copy its answer, then press Paste AI reply here.' : 'Claude opened with the conversation. Copy its answer, then press Paste AI reply here.', 'auto_awesome'));
   openFloating_(which === 'gemini' ? 'https://gemini.google.com/app' : 'https://claude.ai/new?q=' + encodeURIComponent(prompt), 'berich_ai');
+}
+
+async function winSendFileObj_(key, file) {
+  const s = chatSessions.get(key), win = document.getElementById(winId_(key)); if (!s || !win || !file) return;
+  if (!s.phone) { showCRMToast('This chat has no WhatsApp number.', 'warning'); return; }
+  if (!chatBridge.ready) { showCRMToast('Sending pictures and files needs the linked bridge. Press Link WhatsApp.', 'warning'); return; }
+  if (file.size > 12 * 1024 * 1024) { showCRMToast('That file is over 12 MB. Send it with a Drive link instead.', 'warning'); return; }
+  const input = win.querySelector('[data-role="input"]'); const caption = waSafeText(input.value);
+  const dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error('Could not read the file')); fr.readAsDataURL(file); }).catch(() => '');
+  if (!dataUrl) { showCRMToast('Could not read that file.', 'warning'); return; }
+  showCRMToast('Sending ' + file.name + '...', 'upload');
+  try {
+    const r = await fetch(`http://localhost:${senderPort_()}/api/send-media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, mimetype: file.type || 'application/octet-stream', filename: file.name, data: dataUrl.split(',')[1], caption }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.success) { showCRMToast('Not sent: ' + (j.error || 'the bridge refused it') + '.', 'warning'); return; }
+    pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text: caption, status: 'sent', waId: j.id, media: mediaOf_({ media: j.media }) });
+    noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
+    showCRMToast('Sent ' + file.name + '.', 'check_circle');
+  } catch (e) { showCRMToast('Could not reach the bridge.', 'warning'); }
 }
 
 async function winSend_(key) {
@@ -9636,7 +9686,7 @@ function askDeleteMsg_(key, cid) {
   if (!modal) { modal = document.createElement('div'); modal.id = 'crm-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
   const canWa = !!m.waId && chatBridge.ready;
   const what = canWa
-    ? (mine ? 'It will be removed from the CRM and deleted for everyone in WhatsApp. The client will see "This message was deleted". This cannot be undone.' : 'It will be removed from the CRM and from your WhatsApp. The client still keeps their own copy. This cannot be undone.')
+    ? (mine ? 'It will be deleted for everyone in WhatsApp and removed from the CRM. The client will see "This message was deleted". If WhatsApp refuses (for example the message is too old), nothing is deleted and you are told why. This cannot be undone.' : 'It will be removed from the CRM and from your WhatsApp. The client still keeps their own copy. This cannot be undone.')
     : 'It will be removed from the CRM only. ' + (m.waId ? 'WhatsApp is not linked right now, so it stays in WhatsApp.' : 'This message was not sent through the linked bridge, so there is nothing to delete in WhatsApp.');
   modal.innerHTML = `
     <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-del-modal')"></div>
@@ -9648,22 +9698,38 @@ function askDeleteMsg_(key, cid) {
     </div>`;
   modal.classList.remove('hidden'); modal.classList.add('flex');
 }
-async function deleteMessage_(key, cid) {
+async function deleteMessage_(key, cid, meOnly) {
   closeModal('crm-del-modal');
   const s = chatSessions.get(key); if (!s) return;
   const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
   let waNote = 'Removed from the CRM only.';
   if (m.waId && chatBridge.ready) {
     try {
-      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, everyone: m.direction === 'OUTGOING' }) });
+      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, everyone: m.direction === 'OUTGOING', allowMeOnly: !!meOnly }) });
       const j = await r.json().catch(() => ({}));
-      if (r.ok && j.success) waNote = j.deleted === 'everyone' ? 'Deleted in the CRM and for everyone in WhatsApp.' : 'Deleted in the CRM and from your WhatsApp.';
-      else waNote = 'Removed from the CRM. WhatsApp did not delete it (' + (j.error || 'too old or not allowed') + ').';
-    } catch (e) { waNote = 'Removed from the CRM. Could not reach the bridge, so WhatsApp still has it.'; }
+      if (r.status === 409) { askDeleteFallback_(key, cid, j.error); return; }   // WhatsApp will not delete it for the client: ask before doing less
+      if (r.ok && j.success) {
+        waNote = j.deleted === 'everyone' ? 'Deleted for everyone in WhatsApp (confirmed) and removed from the CRM.'
+          : (m.direction === 'OUTGOING' ? 'Removed from the CRM and your WhatsApp. The client can still see it' + (j.note ? ': ' + j.note + '.' : '.') : 'Removed from the CRM and your WhatsApp. The client keeps their own copy.');
+      } else waNote = 'WhatsApp did not delete it (' + (j.error || 'unknown reason') + '). It was NOT removed anywhere.';
+      if (!(r.ok && j.success)) { showCRMToast(waNote, 'warning'); return; }       // keep the CRM copy when WhatsApp failed
+    } catch (e) { showCRMToast('Could not reach the bridge, so nothing was deleted.', 'warning'); return; }
   }
   removeThreadMsg_(s, cid);
   renderWin_(key); refreshInboxList_();
   showCRMToast(waNote, 'delete');
+}
+function askDeleteFallback_(key, cid, reason) {
+  const modal = document.getElementById('crm-del-modal'); if (!modal) return;
+  modal.innerHTML = `
+    <div class="fixed inset-0 bg-black/70" onclick="closeModal('crm-del-modal')"></div>
+    <div class="relative w-full max-w-md neo-modal p-6 z-10 flex flex-col gap-3">
+      <h3 class="text-lg font-bold">WhatsApp will not delete this for the client</h3>
+      <p class="wa-help">${mailEsc_(reason || 'WhatsApp refused.')}. Nothing was deleted yet.</p>
+      <p class="wa-help">You can remove it from the CRM and your own WhatsApp only. The client will still see it.</p>
+      <div class="flex gap-2 justify-end flex-wrap"><button type="button" class="wa-chip" onclick="closeModal('crm-del-modal')">Keep it</button><button type="button" class="wa-chip wa-chip-bad" onclick="deleteMessage_('${key}','${cid}',true)">Remove from CRM and my WhatsApp</button></div>
+    </div>`;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
 }
 function clearChatCrm_(key) {
   const s = chatSessions.get(key); if (!s) return;
