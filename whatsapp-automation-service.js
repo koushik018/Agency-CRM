@@ -1011,7 +1011,7 @@ function startWhatsAppClient() {
     ...(PINNED_WA_VERSION ? { webVersion: PINNED_WA_VERSION, webVersionCache: { type: 'local', path: path.join(__dirname, '.wwebjs_cache') } } : {}),
     deviceName: 'beRich CRM (' + (process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Mac' : 'Linux') + ')',
     browserName: 'Chrome',
-    puppeteer: { headless: !!process.env.WA_HEADLESS, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800', '--window-position=-3000,-3000', '--start-minimized'] } // runs out of sight on this computer; set WA_SHOW=1 to see it
+    puppeteer: { headless: !!process.env.WA_HEADLESS, args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,800', ...(process.env.WA_ONSCREEN ? [] : ['--window-position=-3000,-3000', '--start-minimized'])] } // runs out of sight on this computer; set WA_SHOW=1 to see it
   });
   const mine = waClient;
   // WhatsApp Web sometimes renames the page module the library uses to set the linked-device name: that must never stop the bridge from starting
@@ -1086,10 +1086,11 @@ function startWhatsAppClient() {
     automationState.wa = { status: 'ERROR', number: '', qr: '', error: e.message };
     // Common on first start: the browser page reloads while WhatsApp loads. Wait and try again, up to 3 times.
     waRetries += 1;
-    if (waRetries <= 3) {
-      console.log('[beRich Bridge] Start failed (' + e.message + '). Retrying in 6 seconds (' + waRetries + '/3)...');
+    { // never give up: quick retries first, then one try a minute, so the bridge heals itself without you doing anything
+      const wait = waRetries <= 3 ? 6000 : 60000;
+      console.log('[beRich Bridge] Start failed (' + e.message + '). Retrying in ' + (wait / 1000) + ' seconds (attempt ' + waRetries + ')...');
       try { mineClient.destroy().catch(() => {}); } catch (x) {}
-      setTimeout(() => { if (waClient === mineClient && !restarting) { waClient = null; startWhatsAppClient(); } }, 6000);
+      setTimeout(() => { if (waClient === mineClient && !restarting) { waClient = null; startWhatsAppClient(); } }, wait);
     }
   });
 }
