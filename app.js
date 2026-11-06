@@ -8888,7 +8888,6 @@ function openChatWindow(leadId, phone, opts) {
           <button type="button" class="wa-paste" title="Open in a new tab" onclick="openChatTab('${s.key}')">New tab</button>
           <button type="button" class="wa-paste" title="Fetch the latest messages from WhatsApp now" onclick="syncChatFromWhatsApp_('${s.key}', false).then(ok => showCRMToast(ok ? 'Synced with WhatsApp.' : 'Could not sync: WhatsApp is not linked or the bridge did not answer.', ok ? 'sync' : 'warning'))">Sync</button>
           <button type="button" class="wa-paste" title="Clear this chat in the CRM only" onclick="clearChatCrm_('${s.key}')">Clear</button>
-          <button type="button" class="wa-paste chat-end" title="Delete this whole chat in the CRM and in your WhatsApp" onclick="askDeleteChat_('${s.key}')">Delete chat</button>
           <button type="button" class="wa-paste only-floating" title="Shrink" onclick="toggleMinChat('${s.key}')">Min</button>
           <button type="button" class="wa-paste chat-end" onclick="endChat_('${s.key}')">End chat</button>
           <button type="button" class="wa-paste only-floating" title="Hide window, chat stays open" onclick="hideChatWindow('${s.key}')">X</button>
@@ -8984,6 +8983,8 @@ function renderWin_(key) {
     const when = m.timestamp ? new Date(m.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
     let st = '';
     if (mine && m.status === 'pending') st = `<div class="wa-msg-status wa-pending">Opened in WhatsApp. Not confirmed.<span class="wa-pending-btns"><button type="button" onclick="confirmPending_('${s.key}','${m.cid}')">I sent it</button><button type="button" onclick="discardPending_('${s.key}','${m.cid}')">Remove</button></span></div>`;
+    else if (mine && m.status === 'sending') st = '<div class="wa-msg-status">\u{1F552} Sending...</div>';
+    else if (mine && m.status === 'failed') st = `<div class="wa-msg-status wa-pending">Not sent.<span class="wa-pending-btns"><button type="button" onclick="retrySend_('${s.key}','${m.cid}')">Try again</button><button type="button" onclick="openFailedInWhatsApp_('${s.key}','${m.cid}')">Open in WhatsApp</button></span></div>`;
     else if (mine && m.status === 'read') st = '<div class="wa-msg-status wa-read">\u2713\u2713 Read</div>';
     else if (mine && m.status === 'delivered') st = '<div class="wa-msg-status">\u2713\u2713 Delivered</div>';
     else if (mine && m.status === 'sent') st = '<div class="wa-msg-status">\u2713 Sent</div>';
@@ -8998,7 +8999,7 @@ function renderWin_(key) {
     }
     const isLastIn = !mine && m === lastIn;
     const act = isLastIn ? `<div class="wa-reply-actions"><button type="button" onclick="winQuickReply_('${s.key}')">Quick reply</button><button type="button" onclick="winAiReply_('${s.key}','claude')">Reply with Claude</button><button type="button" onclick="winAiReply_('${s.key}','gemini')">Reply with Gemini</button></div>` : '';
-    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span><button type="button" class="wa-msg-del" title="Delete this message" onclick="askDeleteMsg_('${s.key}','${m.cid}')">Delete</button></div>${mediaHtml}${m.text ? `<div>${esc(String(m.text).slice(0, 600))}</div>` : ''}${st}${act}</div>`;
+    return `<div class="wa-msg ${mine ? 'wa-msg-out' : 'wa-msg-in'}"><div class="wa-msg-who">${mine ? esc(m.author || 'You') : esc(s.name)} <span>${esc(when)}${m.via ? ' | ' + esc(m.via) : ''}</span></div>${mediaHtml}${m.text ? `<div>${esc(String(m.text).slice(0, 600))}</div>` : ''}${st}${act}</div>`;
   }).join('') : '<span class="wa-help">No messages yet. Your chat history is stored only on this computer.</span>';
   box.scrollTop = box.scrollHeight;
   win.querySelector('.chat-bridge-chip').textContent = bridgeText_();
@@ -9114,19 +9115,12 @@ async function winSend_(key) {
   const mode = effectiveSendMode_();
   if (mode === 'window' && chatBridge.ready) { await winDraft_(key); input.value = ''; renderWin_(key); return; }
   if (mode === 'bridge' && chatBridge.ready) {
-    try {
-      const r = await fetch(`http://localhost:${sender.port || 3030}/api/send-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, text, leadId: s.leadId }) });
-      const j = await r.json().catch(() => ({}));
-      if (r.ok && j.status === 'SENT') {
-        const already = (j.id && threadOf_(s).find(x => x.waId === j.id)) || findTwin_(s, text, new Date().toISOString(), j.id);
-        if (already) updateThreadMsg_(s, already.cid, { status: already.status === 'pending' ? 'sent' : (already.status || 'sent'), via: 'WhatsApp (linked)', author: chatUser_(), claimed: true });
-        else pushThread_(s, { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text, status: 'sent', waId: j.id });
-        noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key);
-        showCRMToast('Sent. Delivery ticks update live.', 'check_circle');
-        return;
-      }
-    } catch (e) {}
-    showCRMToast('The bridge could not send this. Opening WhatsApp instead.', 'warning');
+    // Show the message at once (clock), then confirm when the bridge answers. No waiting on screen.
+    const mine = { direction: 'OUTGOING', author: chatUser_(), via: 'WhatsApp (linked)', text, status: 'sending', claimed: true };
+    pushThread_(s, mine);
+    noteChatEvent_(s, 'sent'); input.value = ''; renderWin_(key); input.focus();
+    sendViaBridge_(key, mine.cid, text, sender.port || 3030);
+    return;
   }
   // Official WhatsApp Web: the CRM cannot know whether you pressed send, so the message stays "not confirmed".
   openFloating_(waLink_(s.phone, text), 'berich_wa_' + s.phone);
@@ -9134,6 +9128,42 @@ async function winSend_(key) {
   noteChatEvent_(s, 'drafted');
   input.value = ''; renderWin_(key);
   showCRMToast('WhatsApp opened with your message. It stays "not confirmed" until you press send there.', 'chat');
+}
+async function sendViaBridge_(key, cid, text, port) {
+  const s = chatSessions.get(key); if (!s) return;
+  const fail = () => { updateThreadMsg_(s, cid, { status: 'failed' }); renderWin_(key); };
+  try {
+    const r = await fetch(`http://localhost:${port}/api/send-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: s.phone, text, leadId: s.leadId }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.status === 'SENT') {
+      const cur = threadOf_(s).find(x => x.cid === cid);
+      if (!cur) return; // the live event already merged it elsewhere
+      const patch = { waId: cur.waId || j.id };
+      if (cur.status === 'sending' || cur.status === 'failed') patch.status = 'sent'; // keep delivered/read if the ticks already arrived
+      // the bridge's live event may have created a second copy before this answer: drop the copy, keep this one
+      if (j.id) threadOf_(s).filter(x => x.cid !== cid && x.waId === j.id && x.direction === 'OUTGOING').forEach(x => removeThreadMsgQuiet_(s, x.cid));
+      updateThreadMsg_(s, cid, patch); renderWin_(key);
+      return;
+    }
+  } catch (e) {}
+  fail();
+}
+function removeThreadMsgQuiet_(s, cid) {
+  if (s.leadId) { const l = (globalState.leads || []).find(x => x.id === s.leadId); if (l && Array.isArray(l.chatHistory)) { l.chatHistory = l.chatHistory.filter(x => x.cid !== cid); saveToLocalCache(); } return; }
+  const store = readJson_(NUM_CHAT_KEY); store[s.key] = (store[s.key] || []).filter(x => x.cid !== cid);
+  try { localStorage.setItem(NUM_CHAT_KEY, JSON.stringify(store)); } catch (e) {}
+}
+function retrySend_(key, cid) {
+  const s = chatSessions.get(key); if (!s) return;
+  const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
+  updateThreadMsg_(s, cid, { status: 'sending' }); renderWin_(key);
+  sendViaBridge_(key, cid, m.text, senderPort_());
+}
+function openFailedInWhatsApp_(key, cid) {
+  const s = chatSessions.get(key); if (!s) return;
+  const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
+  openFloating_(waLink_(s.phone, m.text), 'berich_wa_' + s.phone);
+  updateThreadMsg_(s, cid, { status: 'pending', via: 'WhatsApp Web' }); renderWin_(key);
 }
 function confirmPending_(key, cid) { const s = chatSessions.get(key); if (!s) return; updateThreadMsg_(s, cid, { status: 'sent', via: 'WhatsApp Web (confirmed by you)' }); noteChatEvent_(s, 'sent'); renderWin_(key); }
 function discardPending_(key, cid) { const s = chatSessions.get(key); if (!s) return; removeThreadMsg_(s, cid); renderWin_(key); }
@@ -9798,7 +9828,7 @@ function askDeleteFallback_(key, cid, reason, kind) {
 async function syncChatFromWhatsApp_(key, quiet) {
   const s = chatSessions.get(key); if (!s || !s.phone || !chatBridge.ready) return false;
   const nowMs = Date.now();
-  if (s._syncing || (quiet && nowMs - (s._syncAt || 0) < 12000)) return false;
+  if (s._syncing || (quiet && nowMs - (s._syncAt || 0) < 5000)) return false;
   s._syncing = true; s._syncAt = nowMs;
   try {
     const r = await fetch(`http://localhost:${senderPort_()}/api/chat-history?number=${encodeURIComponent(s.phone)}`, { cache: 'no-store' });
@@ -9835,7 +9865,7 @@ async function syncChatFromWhatsApp_(key, quiet) {
 setInterval(() => {
   if (document.hidden || !chatBridge.ready) return;
   chatSessions.forEach((s, k) => { const w = document.getElementById(winId_(k)); if (w && !w.classList.contains('chat-hidden')) syncChatFromWhatsApp_(k, true); });
-}, 20000);
+}, 8000);
 
 /* ---------- delete a whole chat ---------- */
 function clearChatCore_(s) {

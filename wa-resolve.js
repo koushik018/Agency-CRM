@@ -33,7 +33,14 @@ function makeResolver(getClient) {
     if (user && d && user !== d) cache.set(user, d);
   }
 
-  return { resolveNumber, learn, cache };
+  // Instant answer from memory (no WhatsApp round trip). Returns '' when not known yet.
+  function peek(rawId) {
+    const raw = String(rawId || '');
+    if (raw.endsWith('@c.us')) return digitsOf(raw);
+    return cache.get(raw.replace(/@.*/, '')) || '';
+  }
+
+  return { resolveNumber, learn, peek, cache };
 }
 
 module.exports = { makeResolver };

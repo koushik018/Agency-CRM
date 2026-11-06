@@ -999,9 +999,12 @@ function startWhatsAppClient() {
   waClient.on('disconnected', r => { automationState.wa = { status: 'DISCONNECTED', number: '', qr: '', error: String(r) }; emitStatus(); restartWhatsApp('WhatsApp disconnected: ' + r); });
   waClient.on('message_create', async msg => {
     if (!msg.fromMe || msg.isStatus || String(toOf(msg)).includes('@g.us')) return;
-    let contactNumber = '';
-    try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
-    const to = await resolver.resolveNumber(toOf(msg), contactNumber);
+    let to = resolver.peek(toOf(msg)); // known number: no WhatsApp round trip
+    if (!to) {
+      let contactNumber = '';
+      try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
+      to = await resolver.resolveNumber(toOf(msg), contactNumber);
+    }
     if (!isTracked(to)) return;
     const id = msgSerial(msg);
     rememberLid(fullFor(to), msg.id && msg.id.remote);
@@ -1019,9 +1022,12 @@ function startWhatsAppClient() {
     if (!id || !msg.fromMe) return;
     if (!trackedMsgIds.has(id)) {
       // after a restart trackedMsgIds is empty: accept a message of mine only if it went to a CRM client
-      let contactNumber = '';
-      try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
-      const to = await resolver.resolveNumber(toOf(msg), contactNumber);
+      let to = resolver.peek(toOf(msg));
+      if (!to) {
+        let contactNumber = '';
+        try { const c = await msg.getChat(); const ct = c && (await c.getContact()); contactNumber = (ct && ct.number) || ''; } catch (e) {}
+        to = await resolver.resolveNumber(toOf(msg), contactNumber);
+      }
       if (!isTracked(to)) return;
       trackedMsgIds.add(id);
     }
@@ -1030,9 +1036,12 @@ function startWhatsAppClient() {
   waClient.on('message', async msg => {
     if (msg.fromMe || msg.isStatus || String(fromOf(msg)).includes('@g.us')) return; // ignore own, status and group messages
     // WhatsApp often gives a long internal id (@lid) instead of the phone number. Resolve the real number first.
-    let contactNumber = '';
-    try { const c = await msg.getContact(); contactNumber = (c && c.number) || ''; } catch (e) {}
-    const from = await resolver.resolveNumber(fromOf(msg), contactNumber);
+    let from = resolver.peek(fromOf(msg)); // known number: no WhatsApp round trip
+    if (!from) {
+      let contactNumber = '';
+      try { const c = await msg.getContact(); contactNumber = (c && c.number) || ''; } catch (e) {}
+      from = await resolver.resolveNumber(fromOf(msg), contactNumber);
+    }
     await handleIncoming(msg, from);
   });
   waClient.on('ready', () => { setTimeout(() => backfillTracked('ready'), 3000); });
