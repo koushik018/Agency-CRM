@@ -9602,7 +9602,12 @@ function ensureInbox_() {
           <summary>New chat and options</summary>
           <div class="chat-more-body">
             <select id="inbox-new-client" class="wa-input"></select>
-            <input id="inbox-new-phone" class="wa-input" placeholder="Or a number with country code"/>
+            <div class="flex gap-1.5">
+              <select id="inbox-new-cc" class="wa-input" style="max-width:42%" title="Country code">
+                <option value="91">India +91</option><option value="1">USA / Canada +1</option><option value="44">UK +44</option><option value="971">UAE +971</option><option value="966">Saudi Arabia +966</option><option value="65">Singapore +65</option><option value="61">Australia +61</option><option value="49">Germany +49</option><option value="33">France +33</option><option value="92">Pakistan +92</option><option value="880">Bangladesh +880</option><option value="94">Sri Lanka +94</option><option value="977">Nepal +977</option><option value="60">Malaysia +60</option><option value="27">South Africa +27</option>
+              </select>
+              <input id="inbox-new-phone" class="wa-input" inputmode="numeric" placeholder="Or the number without country code"/>
+            </div>
             <button type="button" class="wa-chip wa-chip-on" onclick="inboxNewChat_()">Open chat</button>
             <label class="wa-help" for="chat-send-mode-inbox">Send with</label>
             <select id="chat-send-mode-inbox" class="wa-input" onchange="setSendMode(this.value)">
@@ -9704,7 +9709,10 @@ function selectInboxChat_(key) {
 }
 function inboxNewChat_() {
   const id = document.getElementById('inbox-new-client').value;
-  const digits = String(document.getElementById('inbox-new-phone').value || '').replace(/\D/g, '');
+  const cc = String((document.getElementById('inbox-new-cc') || {}).value || '91');
+  let national = String(document.getElementById('inbox-new-phone').value || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (national.startsWith(cc) && national.length > 10) national = national.slice(cc.length); // they typed the code too
+  const digits = national ? cc + national : '';
   if (id) selectInboxChat_('L:' + id);
   else if (digits.length >= 7) selectInboxChat_('N:' + digits);
   else showCRMToast('Choose a client or type a number.', 'warning');
@@ -9727,7 +9735,7 @@ function askDeleteMsg_(key, cid) {
   const mine = m.direction === 'OUTGOING';
   let modal = document.getElementById('crm-del-modal');
   if (!modal) { modal = document.createElement('div'); modal.id = 'crm-del-modal'; modal.className = 'fixed inset-0 z-[70] hidden items-center justify-center p-4'; document.body.appendChild(modal); }
-  const canWa = chatBridge.ready && (!!m.waId || !!(m.text && s.phone));
+  const canWa = chatBridge.ready && (!!m.waId || !!((m.text || m.media) && s.phone));
   const what = canWa
     ? (mine ? 'It will be deleted for everyone in WhatsApp and removed from the CRM. The client will see "This message was deleted". If WhatsApp refuses (for example the message is too old), nothing is deleted and you are told why. This cannot be undone.' : 'It will be removed from the CRM and from your WhatsApp. The client still keeps their own copy. This cannot be undone.')
     : 'It will be removed from the CRM only. ' + (m.waId ? 'WhatsApp is not linked right now, so it stays in WhatsApp.' : 'This message was not sent through the linked bridge, so there is nothing to delete in WhatsApp.');
@@ -9746,9 +9754,9 @@ async function deleteMessage_(key, cid, meOnly) {
   const s = chatSessions.get(key); if (!s) return;
   const m = threadOf_(s).find(x => x.cid === cid); if (!m) return;
   let waNote = 'Removed from the CRM only.';
-  if (chatBridge.ready && (m.waId || (m.text && s.phone))) {
+  if (chatBridge.ready && (m.waId || ((m.text || m.media) && s.phone))) {
     try {
-      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, number: s.phone, text: m.text, ts: Math.round(new Date(m.timestamp).getTime() / 1000), fromMe: m.direction === 'OUTGOING', everyone: m.direction === 'OUTGOING' && meOnly !== 'me', allowMeOnly: !!meOnly }) });
+      const r = await fetch(`http://localhost:${senderPort_()}/api/delete-message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.waId, number: s.phone, media: !!(m.media && !m.waId), text: m.text, ts: Math.round(new Date(m.timestamp).getTime() / 1000), fromMe: m.direction === 'OUTGOING', everyone: m.direction === 'OUTGOING' && meOnly !== 'me', allowMeOnly: !!meOnly }) });
       const j = await r.json().catch(() => ({}));
       if (r.status === 409) { askDeleteFallback_(key, cid, j.error); return; }
       if (r.status === 404) { removeThreadMsg_(s, cid); renderWin_(key); refreshInboxList_(); showCRMToast('WhatsApp no longer had this message, so it was removed from the CRM only.', 'delete'); return; }   // WhatsApp will not delete it for the client: ask before doing less

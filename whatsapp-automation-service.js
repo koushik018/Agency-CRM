@@ -378,7 +378,8 @@ const server = http.createServer((req, res) => {
         const { MessageMedia } = require('whatsapp-web.js');
         const media = new MessageMedia(p.mimetype, p.data, p.filename || undefined);
         const sent = await waClient.sendMessage(digits + '@c.us', media, p.caption ? { caption: String(p.caption) } : {});
-        const sid = msgSerial(sent);
+        let sid = msgSerial(sent);
+        if (!sid) sid = await sentIdFallback(digits, p.caption || '', true);
         if (sent && sent.to) resolver.learn(sent.to, digits);
         if (sid) { trackedMsgIds.add(sid); seenMsgIds.add(sid); }
         const saved = saveMediaFile(p.mimetype, p.data, p.filename);
@@ -400,7 +401,7 @@ const server = http.createServer((req, res) => {
       const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
       try {
         const payload = JSON.parse(body || '{}');
-        if (!payload.id && !(payload.number && payload.text)) return send(400, { error: 'Missing message id' });
+        if (!payload.id && !(payload.number && (payload.text || payload.media))) return send(400, { error: 'Missing message id' });
         if (!waClient || automationState.wa.status !== 'READY') return send(503, { error: 'WhatsApp is not linked' });
         if (!payload.id) {
           // older CRM messages have no WhatsApp id: find the newest message with the same text near that time in this client's chat
@@ -408,7 +409,7 @@ const server = http.createServer((req, res) => {
           const chat0 = await chatFor(String(payload.number).replace(/\D/g, ''));
           const list0 = chat0 ? await chat0.fetchMessages({ limit: 60 }).catch(() => []) : [];
           const want = String(payload.text).trim();
-          const hit = list0.filter(m => !!m.fromMe === !!payload.fromMe && String(m.body || '').trim() === want && (!payload.ts || Math.abs(m.timestamp - payload.ts) < 900)).sort((x, y) => y.timestamp - x.timestamp)[0];
+          const hit = list0.filter(m => !!m.fromMe === !!payload.fromMe && (payload.media ? !!m.hasMedia : String(m.body || '').trim() === want) && (!payload.ts || Math.abs(m.timestamp - payload.ts) < 900)).sort((x, y) => Math.abs(x.timestamp - (payload.ts || 0)) - Math.abs(y.timestamp - (payload.ts || 0)))[0];
           if (!hit) return send(404, { error: 'could not find that message in WhatsApp (it may already be gone)' });
           payload.id = msgSerial(hit);
         }
@@ -563,8 +564,9 @@ const server = http.createServer((req, res) => {
           return;
         }
         const digits = String(to).replace(/\D/g, '');
-        waClient.sendMessage(digits + '@c.us', text).then(sent => {
-          const sid = msgSerial(sent);
+        waClient.sendMessage(digits + "@c.us", text).then(async sent => {
+          let sid = msgSerial(sent);
+          if (!sid) sid = await sentIdFallback(digits, text, false);
           rememberLid(digits, sent && sent.id && sent.id.remote);
           if (sent && sent.to) resolver.learn(sent.to, digits);
           if (sid) { trackedMsgIds.add(sid); seenMsgIds.add(sid); }
@@ -867,6 +869,14 @@ async function lidFor(full) {
   } catch (e) { chatWhy = 'lid lookup: ' + (e && e.message || e); return ''; }
 }
 let chatWhy = '';
+async function sentIdFallback(digits, body, hasMedia) {
+  try {
+    const chat = await chatFor(digits); if (!chat) return undefined;
+    const list = await chat.fetchMessages({ limit: 6 });
+    const hit = list.filter(m => m.fromMe && (hasMedia ? m.hasMedia : String(m.body || '').trim() === String(body || '').trim())).sort((x, y) => y.timestamp - x.timestamp)[0];
+    return hit ? msgSerial(hit) : undefined;
+  } catch (e) { return undefined; }
+}
 async function chatFor(full) {
   chatWhy = '';
   let phantom = null;
