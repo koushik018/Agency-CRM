@@ -45,6 +45,10 @@ function doGet(e) {
       return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
 
+    if (!isAuthorized_(e && e.parameter && e.parameter.key)) {
+      return jsonResponse_({ status: 'error', message: 'Not authorized' });
+    }
+
     ensureSheetsExist_();
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -79,9 +83,13 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    ensureSheetsExist_();
     const rawBody = (e && e.postData && e.postData.contents) ? e.postData.contents : '{}';
     const payload = JSON.parse(rawBody);
+    if (!isAuthorized_(payload.key)) {
+      return jsonResponse_({ status: 'error', message: 'Not authorized' });
+    }
+    delete payload.key;
+    ensureSheetsExist_();
     const action = payload.action || '';
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -500,6 +508,12 @@ function getSheetRowsAsObjects_(sheet) {
     results.push(obj);
   }
   return results;
+}
+
+// Fails closed: with no CRM_SHARED_KEY script property, every data request is refused.
+function isAuthorized_(supplied) {
+  const expected = PropertiesService.getScriptProperties().getProperty('CRM_SHARED_KEY');
+  return !!expected && expected.length >= 24 && String(supplied || '') === expected;
 }
 
 function jsonResponse_(obj) {

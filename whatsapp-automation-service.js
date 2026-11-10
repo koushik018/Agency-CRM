@@ -110,6 +110,7 @@ const ALLOWED_ORIGINS = [
   /^http:\/\/localhost(:\d+)?$/,
   /^http:\/\/127\.0\.0\.1(:\d+)?$/
 ];
+const EXTRA_ALLOWED_ORIGINS = require('./bridge-origins').loadExtraOrigins(path.join(__dirname, 'allowed-origins.local.txt'));
 const CRM_DATA_PATH = path.join(__dirname, 'crm-data.json');
 
 // Global Automation State
@@ -216,7 +217,7 @@ const server = http.createServer((req, res) => {
   // CORS Headers
   // Only the CRM page (or this machine) may talk to the bridge. A random website must never be able to send WhatsApp messages from your number.
   const origin = req.headers.origin || '';
-  const allowed = !origin || ALLOWED_ORIGINS.some(rx => rx.test(origin));
+  const allowed = !origin || ALLOWED_ORIGINS.some(rx => rx.test(origin)) || EXTRA_ALLOWED_ORIGINS.includes(String(origin).toLowerCase());
   if (origin && allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');

@@ -403,6 +403,7 @@ const CURRENCY_SYMBOLS = {
 
 // LocalStorage Keys
 const STORAGE_KEY_API_URL = 'FRAME3_GAS_WEB_APP_URL';
+const STORAGE_KEY_API_KEY = 'FRAME3_GAS_SHARED_KEY';
 const STORAGE_KEY_CACHE = 'FRAME3_CRM_CLEAN_INR_V2';
 const STORAGE_KEY_BRANDING = 'FRAME3_CRM_BRANDING_V2';
 const STORAGE_KEY_PARTNERS = 'FRAME3_CRM_PARTNERS_10_V3';
@@ -599,6 +600,7 @@ const crmState = {
   githubConfig: loadGitHubConfig_(),
   activityLog: loadSavedActivityLog_(),
   apiUrl: (localStorage.getItem(STORAGE_KEY_API_URL) || '').trim() || DEFAULT_WEB_APP_URL,
+  apiKey: (localStorage.getItem(STORAGE_KEY_API_KEY) || '').trim(),
   branding: loadSavedBranding_(),
   partners: loadSavedPartners_(),
   whatsappNumber: normalizeIndianWhatsAppNumber(localStorage.getItem(STORAGE_KEY_WHATSAPP) || DEFAULT_WHATSAPP_NUMBER),
@@ -1686,7 +1688,7 @@ async function fetchFromGoogleSheets(showNotification = false, isSilentBackgroun
   try {
     crmState.isSyncing = true;
     const cacheBuster = `&_t=${Date.now()}`;
-    const response = await fetch(url + (url.includes('?') ? '&' : '?') + 'action=getAll' + cacheBuster, {
+    const response = await fetch(url + (url.includes('?') ? '&' : '?') + 'action=getAll&key=' + encodeURIComponent(crmState.apiKey || '') + cacheBuster, {
       method: 'GET',
       headers: { 'Accept': 'application/json' }
     });
@@ -1794,7 +1796,7 @@ async function postToGoogleSheets(payload) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ ...payload, key: crmState.apiKey || '' })
   });
   const result = await response.json();
   updateSyncBadge('connected');
@@ -7361,6 +7363,9 @@ function injectSharedModals() {
           <label class="text-[10px] uppercase tracking-[0.14em] text-[#8E92A4] font-semibold">Deployed Google Apps Script Web App URL (Optional Secondary Backup)</label>
           <input id="crm-api-url-input" type="url" value="${escapeHtml(crmState.apiUrl)}"
             class="h-10 px-4 rounded-full bg-[#12121A] text-white font-label-code text-xs focus:outline-none"/>
+          <label class="text-[10px] uppercase tracking-[0.14em] text-[#8E92A4] font-semibold mt-2">Apps Script Shared Key</label>
+          <input id="crm-api-key-input" type="password" autocomplete="off"
+            class="h-10 px-4 rounded-full bg-[#12121A] text-white font-label-code text-xs focus:outline-none"/>
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
@@ -7849,6 +7854,8 @@ function openApiSettingsModal() {
   const mask = v => (adminView ? (v || '') : (v ? SECRET_MASK_ : ''));
   const urlEl = document.getElementById('crm-api-url-input');
   if (urlEl) { urlEl.type = adminView ? 'url' : 'password'; urlEl.value = mask(crmState.apiUrl || DEFAULT_WEB_APP_URL); urlEl.autocomplete = 'off'; urlEl.setAttribute('data-masked', adminView ? '' : '1'); }
+  const apiKeyEl = document.getElementById('crm-api-key-input');
+  if (apiKeyEl) apiKeyEl.value = mask(crmState.apiKey);
   if (ghTokenEl) ghTokenEl.value = mask(ghCfg.token);
   if (ghOwnerEl) { ghOwnerEl.type = adminView ? 'text' : 'password'; ghOwnerEl.value = mask(ghCfg.owner || DEFAULT_GITHUB_CONFIG.owner); }
   if (ghRepoEl) { ghRepoEl.type = adminView ? 'text' : 'password'; ghRepoEl.value = mask(ghCfg.repo || DEFAULT_GITHUB_CONFIG.repo); }
@@ -7887,6 +7894,8 @@ function savePartnerAndApiSettings() {
   const url = unmask(document.getElementById('crm-api-url-input'), crmState.apiUrl) || DEFAULT_WEB_APP_URL;
   crmState.apiUrl = url;
   localStorage.setItem(STORAGE_KEY_API_URL, url);
+  crmState.apiKey = unmask(document.getElementById('crm-api-key-input'), crmState.apiKey);
+  localStorage.setItem(STORAGE_KEY_API_KEY, crmState.apiKey);
 
   const ghTokenEl = document.getElementById('cfg-gh-token');
   const ghOwnerEl = document.getElementById('cfg-gh-owner');
@@ -9464,7 +9473,7 @@ function openGmailSetup() {
         <li>Go to <b>APIs and Services</b>, then <b>Library</b>, search <b>Gmail API</b> and press <b>Enable</b>.</li>
         <li>Go to <b>OAuth consent screen</b>. Choose <b>External</b>, fill the app name and your email, then under <b>Test users</b> add every partner's Gmail address.</li>
         <li>Go to <b>Credentials</b>, press <b>Create credentials</b>, then <b>OAuth client ID</b>, type <b>Web application</b>.</li>
-        <li>Under <b>Authorized JavaScript origins</b> add <b>https://koushik018.github.io</b>. Leave the redirect list empty. Press Create.</li>
+        <li>Under <b>Authorized JavaScript origins</b> add <b>${escapeHtml(location.origin)}</b>. Leave the redirect list empty. Press Create.</li>
         <li>Copy the <b>Client ID</b> (it ends with .apps.googleusercontent.com) and paste it below.</li>
       </ol>
       <input id="gmail-client-input" class="wa-input" style="width:100%" placeholder="Paste your Client ID here" value="${escapeHtml(gmailClientId_())}"/>

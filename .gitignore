@@ -17,3 +17,5 @@ node_modules/
 tracked-numbers.json
 media/
 .claude/
+allowed-origins.local.txt
+dist/
